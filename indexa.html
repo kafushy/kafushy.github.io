@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Hub</title>
+  <style>
+    /* Simple styling */
+    body { font-family: system-ui, sans-serif; margin: 0; background: #121212; color: #e0e0e0; }
+    header { background: #1e1e1e; padding: 1rem; border-bottom: 2px solid #333; }
+    nav { display: flex; gap: 1rem; justify-content: center; }
+    nav a {
+      color: #a0a0a0; text-decoration: none; padding: 0.5rem 1rem;
+      border-radius: 4px; transition: 0.2s;
+    }
+    nav a:hover, nav a.active { color: #fff; background: #333; }
+    main { padding: 2rem; max-width: 800px; margin: 0 auto; }
+    .tab-content { display: none; } /* Hide all sections by default */
+    .tab-content.active { display: block; } /* Show active section */
+  </style>
+</head>
+<body>
+
+  <header>
+    <nav>
+      <a href="#" onclick="showTab('blog')" class="active">Blog</a>
+      <a href="#" onclick="showTab('nonogram')">Nonogram</a>
+      <a href="#" onclick="showTab('pbbg')">PBBG</a>
+      <a href="#" onclick="showTab('comic')">Comic</a>
+      <a href="#" onclick="showTab('music')">Music</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="blog" class="tab-content active">
+      <h2>Blog</h2>
+      <p>Your latest updates and thoughts go here.</p>
+    </section>
+
+    <section id="nonogram" class="tab-content">
+      <h2>Nonogram</h2>
+      <p>The game will be embedded here.</p>
+    </section>
+
+    <section id="pbbg" class="tab-content">
+      <h2>PBBG</h2>
+      <p>Your persistent browser game will live here.</p>
+    </section>
+
+    <section id="comic" class="tab-content">
+      <h2>Comic Strip</h2>
+      <p>Your comic images will be displayed here.</p>
+    </section>
+
+    <section id="music" class="tab-content">
+      <h2>Music</h2>
+      <p>Your custom audio player will be here.</p>
+      <!-- You can add an <audio> element or an iframe to a player here -->
+    </section>
+  </main>
+
+  <script>
+    function showTab(tabId) {
+      // Hide all sections
+      document.querySelectorAll('.tab-content').forEach(section => {
+        section.classList.remove('active');
+      });
+      // Remove active class from all nav links
+      document.querySelectorAll('nav a').forEach(link => {
+        link.classList.remove('active');
+      });
+      
+      // Show the selected section and highlight the link
+      document.getElementById(tabId).classList.add('active');
+      event.target.classList.add('active');
+    }
+  </script>
+</body>
+</html>
