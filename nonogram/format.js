@@ -1,4 +1,4 @@
-// nonogram/format.js — Parser for the kafushy nonogram format (NONO v1)
+// nonogram/format.js — Parser for the kafushy nonogram format (NONO v)
 //
 // Gradient syntax (new):
 //   #hex1 [ratio1] #hex2 [ratio2] ... angle
