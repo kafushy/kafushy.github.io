@@ -1,257 +1,221 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>My Game</title>
-  <style>
-    /* ---------- Basic reset & look ---------- */
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 1rem;
-    }
-    .card {
-      background: #1e293b;
-      border-radius: 12px;
-      padding: 2rem;
-      width: 100%;
-      max-width: 420px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
-    }
-    h1 { font-size: 1.4rem; margin-bottom: 1rem; text-align: center; }
-    label { display: block; font-size: 0.85rem; margin-bottom: 0.25rem; color: #94a3b8; }
-    input {
-      width: 100%;
-      padding: 0.6rem 0.75rem;
-      margin-bottom: 0.9rem;
-      border-radius: 8px;
-      border: 1px solid #334155;
-      background: #0f172a;
-      color: #e2e8f0;
-      font-size: 0.95rem;
-    }
-    input:focus { outline: 2px solid #38bdf8; border-color: transparent; }
-    button {
-      width: 100%;
-      padding: 0.65rem;
-      border: none;
-      border-radius: 8px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      cursor: pointer;
-      background: #38bdf8;
-      color: #0f172a;
-      margin-bottom: 0.5rem;
-      transition: background 0.15s;
-    }
-    button:hover { background: #7dd3fc; }
-    button.secondary { background: #334155; color: #e2e8f0; }
-    button.secondary:hover { background: #475569; }
-    .hidden { display: none; }
-    .msg {
-      font-size: 0.85rem;
-      text-align: center;
-      margin-top: 0.75rem;
-      min-height: 1.2em;
-    }
-    .msg.error { color: #f87171; }
-    .msg.ok { color: #4ade80; }
-    .user-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 0.85rem;
-      color: #94a3b8;
-      margin-bottom: 1rem;
-      padding-bottom: 0.75rem;
-      border-bottom: 1px solid #334155;
-    }
-    .game-area {
-      text-align: center;
-      margin: 1rem 0;
-    }
-    .counter {
-      font-size: 2.5rem;
-      font-weight: 700;
-      color: #38bdf8;
-      margin: 0.5rem 0;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nonogram · Fun Mode</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  h1 { font-size: 1.1rem; font-weight: 600; margin: 0 0 0.75rem; }
+  .toolbar { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+  .toolbar button {
+    background: #1e293b; color: #e2e8f0;
+    border: 1px solid #334155; border-radius: 8px;
+    padding: 0.4rem 0.8rem; font-size: 0.85rem; cursor: pointer;
+  }
+  .toolbar button.active {
+    background: #38bdf8; color: #0f172a;
+    border-color: #38bdf8; font-weight: 600;
+  }
+  .board {
+    display: grid;
+    background: #1e293b;
+    border: 2px solid #64748b;
+    border-radius: 8px;
+    padding: 4px;
+  }
+  .col-clue {
+    display: flex; flex-direction: column;
+    justify-content: flex-end; align-items: center;
+    padding-bottom: 4px; font-size: 0.75rem;
+    color: #94a3b8; line-height: 1.1;
+  }
+  .row-clue {
+    display: flex; flex-direction: row;
+    justify-content: flex-end; align-items: center;
+    gap: 4px; padding-right: 4px;
+    font-size: 0.75rem; color: #94a3b8;
+  }
+  .cell {
+    background: #0f172a;
+    border: 1px solid #334155;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: #64748b;
+  }
+  .cell:hover { background: #16233b; }
+  .cell.filled { background: #38bdf8; border-color: #0ea5e9; }
+  .cell.marked::after { content: "×"; font-size: 1rem; line-height: 1; }
+  .cell.thick-right { border-right: 2px solid #64748b; }
+  .cell.thick-bottom { border-bottom: 2px solid #64748b; }
+  #status { margin-top: 1rem; min-height: 1.5rem; font-size: 0.9rem; color: #4ade80; }
+</style>
 </head>
 <body>
-  <div class="card">
-    <!-- ============ LOGGED OUT VIEW ============ -->
-    <div id="auth-view">
-      <h1>🎮 My Game</h1>
-      <label for="email">Email</label>
-      <input id="email" type="email" placeholder="you@example.com" autocomplete="email" />
-      <label for="password">Password</label>
-      <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
 
-      <button id="login-btn">Log in</button>
-      <button id="signup-btn" class="secondary">Sign up</button>
-      <div id="auth-msg" class="msg"></div>
-    </div>
+<h1>Nonogram · Fun Mode</h1>
 
-    <!-- ============ LOGGED IN VIEW ============ -->
-    <div id="game-view" class="hidden">
-      <div class="user-bar">
-        <span id="user-email">…</span>
-        <button id="logout-btn" class="secondary" style="width:auto; margin:0; padding:0.3rem 0.7rem; font-size:0.8rem;">Log out</button>
-      </div>
+<div class="toolbar">
+  <button id="tool-fill" class="active">Fill</button>
+  <button id="tool-mark">Mark ×</button>
+  <button id="reset">Reset</button>
+</div>
 
-      <div class="game-area">
-        <p style="color:#94a3b8; font-size:0.9rem;">Your saved score</p>
-        <div id="score-display" class="counter">0</div>
-        <button id="score-btn">+1 point</button>
-        <button id="save-btn" class="secondary">Save to cloud</button>
-        <div id="game-msg" class="msg"></div>
-      </div>
-    </div>
-  </div>
+<div id="board" class="board"></div>
+<div id="status"></div>
 
-  <!-- ---------- Supabase library (CDN) ---------- -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // ---------- puzzle ----------
+  const SOLUTION = [
+    "....##....",
+    "...####...",
+    "..######..",
+    ".########.",
+    "##########",
+    "##########",
+    ".########.",
+    "..######..",
+    "...####...",
+    "....##....",
+  ];
+  const N = SOLUTION.length;
+  const M = SOLUTION[0].length;
 
-  <script>
-    // ============================================================
-    // 1. FILL THESE IN from Supabase Dashboard > Project Settings > API
-    // ============================================================
-const SUPABASE_URL = "https://fpvqzmxmivkoicqejfaq.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_6eWWlvq2x5PsJqXnkv02Gg_IF51nyhI";
-
-    const { createClient } = supabase;
-    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-    // ============================================================
-    // 2. Grab DOM elements
-    // ============================================================
-    const authView   = document.getElementById("auth-view");
-    const gameView   = document.getElementById("game-view");
-    const emailInput = document.getElementById("email");
-    const passInput  = document.getElementById("password");
-    const authMsg    = document.getElementById("auth-msg");
-    const gameMsg    = document.getElementById("game-msg");
-    const userEmail  = document.getElementById("user-email");
-    const scoreEl    = document.getElementById("score-display");
-
-    let currentScore = 0; // local score for this session
-
-    // ============================================================
-    // 3. Helpers
-    // ============================================================
-    function showMsg(el, text, type) {
-      el.textContent = text;
-      el.className = "msg " + (type || "");
-    }
-
-    async function showGameView(user) {
-      authView.classList.add("hidden");
-      gameView.classList.remove("hidden");
-      userEmail.textContent = user.email;
-      await loadScore(user.id);
-    }
-
-    function showAuthView() {
-      gameView.classList.add("hidden");
-      authView.classList.remove("hidden");
-      emailInput.value = "";
-      passInput.value = "";
-      showMsg(authMsg, "", "");
-    }
-
-    // ============================================================
-    // 4. Auth: sign up / log in / log out
-    // ============================================================
-    document.getElementById("signup-btn").onclick = async () => {
-      showMsg(authMsg, "Creating account…", "");
-      const { data, error } = await db.auth.signUp({
-        email: emailInput.value,
-        password: passInput.value,
-      });
-      if (error) return showMsg(authMsg, error.message, "error");
-      if (data.session) {
-        showMsg(authMsg, "Account created! Logged in.", "ok");
-        showGameView(data.user);
-      } else {
-        showMsg(authMsg, "Check your email to confirm your account.", "ok");
-      }
-    };
-
-    document.getElementById("login-btn").onclick = async () => {
-      showMsg(authMsg, "Logging in…", "");
-      const { data, error } = await db.auth.signInWithPassword({
-        email: emailInput.value,
-        password: passInput.value,
-      });
-      if (error) return showMsg(authMsg, error.message, "error");
-      showMsg(authMsg, "", "");
-      showGameView(data.user);
-    };
-
-    document.getElementById("logout-btn").onclick = async () => {
-      await db.auth.signOut();
-      showAuthView();
-    };
-
-    // ============================================================
-    // 5. Game logic + cloud save
-    // ============================================================
-    document.getElementById("score-btn").onclick = () => {
-      currentScore++;
-      scoreEl.textContent = currentScore;
-    };
-
-    document.getElementById("save-btn").onclick = async () => {
-      showMsg(gameMsg, "Saving…", "");
-      const { data: { user } } = await db.auth.getUser();
-      if (!user) return showMsg(gameMsg, "Not logged in.", "error");
-
-      // Upsert = insert if new, update if exists
-      const { error } = await db
-        .from("game_saves")
-        .upsert({ user_id: user.id, score: currentScore }, { onConflict: "user_id" });
-
-      if (error) return showMsg(gameMsg, error.message, "error");
-      showMsg(gameMsg, "Saved to cloud ✓", "ok");
-    };
-
-    async function loadScore(userId) {
-      const { data, error } = await db
-        .from("game_saves")
-        .select("score")
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      if (error) {
-        showMsg(gameMsg, error.message, "error");
-        return;
-      }
-      currentScore = data?.score ?? 0;
-      scoreEl.textContent = currentScore;
-    }
-
-    // ============================================================
-    // 6. On page load: are we already logged in?
-    // ============================================================
-    (async () => {
-      const { data: { session } } = await db.auth.getSession();
-      if (session) showGameView(session.user);
-      else showAuthView();
-    })();
-
-    // React to login/logout from other tabs or email confirmation
-    db.auth.onAuthStateChange((_event, session) => {
-      if (session) showGameView(session.user);
-      else showAuthView();
+  function cluesForLines(lines) {
+    return lines.map(line => {
+      const runs = line.match(/#+/g) || [];
+      return runs.length ? runs.map(r => r.length) : [0];
     });
-  </script>
+  }
+
+  const colLines = [];
+  for (let c = 0; c < M; c++) {
+    let s = "";
+    for (let r = 0; r < N; r++) s += SOLUTION[r][c];
+    colLines.push(s);
+  }
+  const rowClues = cluesForLines(SOLUTION);
+  const colClues = cluesForLines(colLines);
+
+  // 0 = empty, 1 = filled, 2 = marked ×
+  const state = Array.from({ length: N }, () => Array(M).fill(0));
+  let won = false;
+
+  // ---------- build board ----------
+  const boardEl = document.getElementById("board");
+  boardEl.style.gridTemplateColumns = `auto repeat(${M}, 2rem)`;
+  boardEl.style.gridTemplateRows = `auto repeat(${N}, 2rem)`;
+
+  const cellEls = [];
+
+  boardEl.appendChild(document.createElement("div")); // corner
+
+  for (let c = 0; c < M; c++) {
+    const d = document.createElement("div");
+    d.className = "col-clue";
+    colClues[c].forEach(n => {
+      const s = document.createElement("span");
+      s.textContent = n;
+      d.appendChild(s);
+    });
+    boardEl.appendChild(d);
+  }
+
+  for (let r = 0; r < N; r++) {
+    const clue = document.createElement("div");
+    clue.className = "row-clue";
+    rowClues[r].forEach(n => {
+      const s = document.createElement("span");
+      s.textContent = n;
+      clue.appendChild(s);
+    });
+    boardEl.appendChild(clue);
+
+    const rowEls = [];
+    for (let c = 0; c < M; c++) {
+      const cell = document.createElement("div");
+      cell.className = "cell";
+      cell.dataset.r = r;
+      cell.dataset.c = c;
+      if (c === M - 1 || (c + 1) % 5 === 0) cell.classList.add("thick-right");
+      if (r === N - 1 || (r + 1) % 5 === 0) cell.classList.add("thick-bottom");
+      boardEl.appendChild(cell);
+      rowEls.push(cell);
+    }
+    cellEls.push(rowEls);
+  }
+
+  // ---------- logic ----------
+  function setCell(r, c, val) {
+    if (state[r][c] === val) return;
+    state[r][c] = val;
+    cellEls[r][c].classList.toggle("filled", val === 1);
+    cellEls[r][c].classList.toggle("marked", val === 2);
+    checkWin();
+  }
+
+  function checkWin() {
+    if (won) return;
+    for (let r = 0; r < N; r++)
+      for (let c = 0; c < M; c++)
+        if ((state[r][c] === 1) !== (SOLUTION[r][c] === "#")) return;
+    won = true;
+    document.getElementById("status").textContent = "Solved ✨";
+  }
+
+  // ---------- interaction ----------
+  let tool = "fill";
+  let painting = false;
+  let paintValue = 0;
+
+  const toolFill = document.getElementById("tool-fill");
+  const toolMark = document.getElementById("tool-mark");
+  toolFill.onclick = () => { tool = "fill"; toolFill.classList.add("active"); toolMark.classList.remove("active"); };
+  toolMark.onclick = () => { tool = "mark"; toolMark.classList.add("active"); toolFill.classList.remove("active"); };
+
+  document.getElementById("reset").onclick = () => {
+    for (let r = 0; r < N; r++) for (let c = 0; c < M; c++) setCell(r, c, 0);
+    won = false;
+    document.getElementById("status").textContent = "";
+  };
+
+  boardEl.addEventListener("contextmenu", e => e.preventDefault());
+
+  boardEl.addEventListener("pointerdown", e => {
+    if (won) return;
+    const cell = e.target.closest(".cell");
+    if (!cell) return;
+    e.preventDefault();
+    const r = +cell.dataset.r, c = +cell.dataset.c;
+    const target = (e.button === 2 || tool === "mark") ? 2 : 1;
+    paintValue = state[r][c] === target ? 0 : target;
+    painting = true;
+    setCell(r, c, paintValue);
+  });
+
+  boardEl.addEventListener("pointermove", e => {
+    if (!painting || won) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const cell = el && el.closest ? el.closest(".cell") : null;
+    if (!cell) return;
+    setCell(+cell.dataset.r, +cell.dataset.c, paintValue);
+  });
+
+  window.addEventListener("pointerup", () => { painting = false; });
+  window.addEventListener("pointercancel", () => { painting = false; });
+</script>
 </body>
 </html>
