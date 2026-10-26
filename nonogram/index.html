@@ -15,68 +15,75 @@
   }
   h1 { font-size: 1rem; font-weight: 600; margin: 0 0 0.75rem; color: #94a3b8; }
   .toolbar { display: flex; gap: 0.4rem; margin-bottom: 1rem; flex-wrap: wrap; justify-content: center; align-items: center; }
-  .toolbar button {
+  .toolbar button, .paste-bar button {
     background: #1e293b; color: #e2e8f0;
     border: 1px solid #334155; border-radius: 6px;
     padding: 0.35rem 0.7rem; font-size: 0.8rem;
     cursor: pointer; font-family: inherit;
   }
   .toolbar button.active { background: #38bdf8; color: #0f172a; border-color: #38bdf8; font-weight: 600; }
-  .toolbar button:hover:not(.active) { background: #334155; }
+  .toolbar button:hover:not(.active), .paste-bar button:hover { background: #334155; }
   canvas { display: block; border-radius: 8px; touch-action: none; }
-  #status { margin-top: 1rem; font-size: 0.9rem; min-height: 1.5em; color: #4ade80; text-align: center; }
+  #status { margin-top: 1rem; font-size: 0.9rem; min-height: 1.5em; color: #4ade80; text-align: center; max-width: 600px; padding: 0.4rem 0.8rem; border-radius: 6px; }
+  #status.error { color: #fecaca; background: #7f1d1d; }
   .color-picker { display: flex; gap: 0.25rem; align-items: center; }
   .color-swatch { width: 24px; height: 24px; border-radius: 4px; cursor: pointer; border: 2px solid transparent; box-sizing: border-box; }
   .color-swatch.active { border-color: #fff; box-shadow: 0 0 0 2px #38bdf8; }
-.paste-bar {
-  display: flex; gap: 0.4rem; margin-bottom: 0.5rem;
-  justify-content: center; flex-wrap: wrap;
-}
-.paste-bar button {
-  background: #1e293b; color: #e2e8f0;
-  border: 1px solid #334155; border-radius: 6px;
-  padding: 0.4rem 0.8rem; font-size: 0.8rem;
-  cursor: pointer; font-family: inherit;
-}
-.paste-bar button:hover { background: #334155; }
-.paste-panel {
-  background: #1e293b; border-radius: 8px;
-  padding: 0.75rem; margin-bottom: 0.75rem;
-  max-width: 600px; width: 100%;
-}
-.paste-panel.hidden { display: none; }
-#paste-input {
-  width: 100%; min-height: 140px;
-  background: #0f172a; color: #e2e8f0;
-  border: 1px solid #334155; border-radius: 6px;
-  padding: 0.6rem; font-family: ui-monospace, monospace;
-  font-size: 0.8rem; resize: vertical;
-  box-sizing: border-box;
-}
-#paste-input:focus { outline: 2px solid #38bdf8; border-color: transparent; }
-.paste-actions {
-  display: flex; gap: 0.4rem; margin-top: 0.5rem;
-}
-.paste-actions button {
-  flex: 1; padding: 0.5rem; border-radius: 6px;
-  border: 1px solid #334155; font-family: inherit;
-  font-size: 0.85rem; font-weight: 600; cursor: pointer;
-  background: #38bdf8; color: #0f172a;
-}
-.paste-actions button.secondary {
-  background: #334155; color: #e2e8f0; font-weight: 400;
-}
-.paste-actions button:hover { filter: brightness(1.1); }
-.paste-error {
-  color: #f87171; font-size: 0.8rem; margin-top: 0.5rem;
-  min-height: 1em;
-}
+
+  .paste-bar { display: flex; gap: 0.4rem; margin-bottom: 0.5rem; justify-content: center; flex-wrap: wrap; }
+  .paste-panel { background: #1e293b; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem; max-width: 600px; width: 100%; }
+  .paste-panel.hidden { display: none; }
+  #paste-input {
+    width: 100%; min-height: 140px;
+    background: #0f172a; color: #e2e8f0;
+    border: 1px solid #334155; border-radius: 6px;
+    padding: 0.6rem; font-family: ui-monospace, monospace;
+    font-size: 0.8rem; resize: vertical; box-sizing: border-box;
+  }
+  #paste-input:focus { outline: 2px solid #38bdf8; border-color: transparent; }
+  .paste-actions { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+  .paste-actions button {
+    flex: 1; padding: 0.5rem; border-radius: 6px;
+    border: 1px solid #334155; font-family: inherit;
+    font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    background: #38bdf8; color: #0f172a;
+  }
+  .paste-actions button.secondary { background: #334155; color: #e2e8f0; font-weight: 400; }
+  .paste-actions button:hover { filter: brightness(1.1); }
+  .paste-error { color: #f87171; font-size: 0.85rem; margin-top: 0.5rem; min-height: 1em; }
+
+  .copy-fallback {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 9999; padding: 1rem;
+  }
+  .copy-fallback .box {
+    background: #1e293b; border-radius: 8px;
+    padding: 1rem; width: 100%; max-width: 500px;
+  }
+  .copy-fallback textarea {
+    width: 100%; height: 200px;
+    background: #0f172a; color: #e2e8f0;
+    border: 1px solid #334155; border-radius: 6px;
+    padding: 0.6rem; font-family: ui-monospace, monospace;
+    font-size: 0.8rem; box-sizing: border-box;
+  }
+  .copy-fallback .hint {
+    font-size: 0.85rem; color: #94a3b8;
+    margin-bottom: 0.5rem; text-align: center;
+  }
+  .copy-fallback button {
+    margin-top: 0.5rem; width: 100%;
+    padding: 0.5rem; border-radius: 6px;
+    border: 1px solid #334155; font-family: inherit;
+    font-size: 0.9rem; cursor: pointer;
+    background: #334155; color: #e2e8f0;
+  }
 </style>
 </head>
 <body>
 <h1 id="puzzle-title">Nonogram</h1>
 
-<!-- ============ NEW: paste area ============ -->
 <div class="paste-bar">
   <button id="toggle-paste">📋 Paste a puzzle</button>
   <button id="copy-puzzle" style="display:none;">⧉ Copy current puzzle</button>
@@ -85,15 +92,14 @@
   <textarea id="paste-input" placeholder="Paste a nonogram here...
 
 kafushy, Heart, 2026-10-26, v1
-#0f172a #1e293b 180 3 1 / #38bdf8 90 1
-/2.4.4.4.2/1 1.5.5.3.1"></textarea>
+#0f172a #1e293b 180 / #38bdf8 90
+/1 1.5.5.3.1/2.4.4.4.2"></textarea>
   <div class="paste-actions">
     <button id="load-puzzle">Load</button>
     <button id="cancel-paste" class="secondary">Cancel</button>
   </div>
   <div id="paste-error" class="paste-error"></div>
 </div>
-<!-- ============ end new ============ -->
 
 <div class="toolbar">
   <button id="tool-fill" class="active">Fill</button>
@@ -107,17 +113,16 @@ kafushy, Heart, 2026-10-26, v1
 
 <script src="./format.js"></script>
 <script>
-// =============== DEFAULT PUZZLE ===============
 const DEFAULT_PUZZLE_TEXT = `
 kafushy, Heart, 2026-10-26, v1
-#0f172a #1e293b 180 3 1 / #38bdf8 90 1
-/2.4.4.4.2/1 1.5.5.3.1
+#0f172a #1e293b 180 / #38bdf8 90
+/1 1.5.5.3.1/2.4.4.4.2
 `;
 
 let currentGame = null;
 let currentPuzzleText = DEFAULT_PUZZLE_TEXT;
 
-// =============== NonogramGame (unchanged) ===============
+// =============== NonogramGame ===============
 class NonogramGame {
   constructor(puzzle, canvas, titleEl, statusEl) {
     this.puzzle = puzzle;
@@ -150,7 +155,15 @@ class NonogramGame {
     this.setupTools();
     this.resize();
     this.render();
-    this._onResize = () => { this.resize(); this.render(); };
+
+    // Only re-resize if WIDTH changed (fixes mobile scroll resize)
+    this._lastWidth = window.innerWidth;
+    this._onResize = () => {
+      if (window.innerWidth === this._lastWidth) return;
+      this._lastWidth = window.innerWidth;
+      this.resize();
+      this.render();
+    };
     window.addEventListener("resize", this._onResize);
   }
 
@@ -192,8 +205,13 @@ class NonogramGame {
     this.state = Array.from({ length: this.N }, () => new Array(this.M).fill(0));
     this.marks = Array.from({ length: this.N }, () => new Array(this.M).fill(false));
     this.won = false;
-    this.statusEl.textContent = "";
+    this.setStatus("");
     this.render();
+  }
+
+  setStatus(text, isError) {
+    this.statusEl.textContent = text;
+    this.statusEl.classList.toggle("error", !!isError);
   }
 
   resize() {
@@ -238,17 +256,26 @@ class NonogramGame {
     this.updateStatus();
   }
 
-  makeGradient(palette, weights, angle, w, h) {
+  // Gradient direction: 0 = right, 90 = up (screen coords)
+  // gradient goes from center - dir*len/2 to center + dir*len/2
+  makeGradient(palette, weights, angle, x, y, w, h) {
     const rad = angle * Math.PI / 180;
-    const dx = Math.sin(rad), dy = -Math.cos(rad);
+    const dx = Math.cos(rad);
+    const dy = -Math.sin(rad);
     const len = Math.abs(w * dx) + Math.abs(h * dy);
-    const cx = w / 2, cy = h / 2;
+    const cx = x + w / 2, cy = y + h / 2;
     const grad = this.ctx.createLinearGradient(
       cx - dx*len/2, cy - dy*len/2,
-      cx + dx*len/2, cy + dy*len/2);
+      cx + dx*len/2, cy + dy*len/2
+    );
     const n = palette.length;
-    if (n === 1) { grad.addColorStop(0, palette[0]); grad.addColorStop(1, palette[0]); return grad; }
-    const positions = [0]; let cum = 0;
+    if (n === 1) {
+      grad.addColorStop(0, palette[0]);
+      grad.addColorStop(1, palette[0]);
+      return grad;
+    }
+    const positions = [0];
+    let cum = 0;
     for (let i = 0; i < n; i++) { cum += weights[i]; positions.push(cum); }
     for (let i = 0; i < n; i++) {
       const mid = (positions[i] + positions[i+1]) / 2;
@@ -260,17 +287,35 @@ class NonogramGame {
   }
 
   drawBackground() {
+    // Gradient is constrained to the grid rect only — clue areas stay transparent
+    const gx = this.marginLeft, gy = this.marginTop;
+    const gw = this.M * this.cellSize, gh = this.N * this.cellSize;
     const { palette, weights, angle } = this.puzzle.bg;
-    this.ctx.fillStyle = this.makeGradient(palette, weights, angle, this.logicalW, this.logicalH);
-    this.ctx.fillRect(0, 0, this.logicalW, this.logicalH);
+    this.ctx.fillStyle = this.makeGradient(palette, weights, angle, gx, gy, gw, gh);
+    this.ctx.fillRect(gx, gy, gw, gh);
   }
 
   drawCells() {
-    const ctx = this.ctx, fg = this.puzzle.fg.palette, cs = this.cellSize;
+    const ctx = this.ctx, cs = this.cellSize;
+    const fg = this.puzzle.fg;
+    const gx = this.marginLeft, gy = this.marginTop;
+    const gw = this.M * cs, gh = this.N * cs;
+
+    // In "visual gradient" mode (multiple fg colors but no commas),
+    // cells are filled with a slice of the gradient, not a flat color.
+    let gradientFill = null;
+    if (!this.puzzle.multiColor && fg.palette.length > 1) {
+      gradientFill = this.makeGradient(fg.palette, fg.weights, fg.angle, gx, gy, gw, gh);
+    }
+
     for (let r = 0; r < this.N; r++) for (let c = 0; c < this.M; c++) {
       const { x, y } = this.cellToPixel(r, c);
       if (this.state[r][c] > 0) {
-        ctx.fillStyle = fg[this.state[r][c] - 1] || "#38bdf8";
+        if (this.puzzle.multiColor) {
+          ctx.fillStyle = fg.palette[this.state[r][c] - 1] || fg.palette[0];
+        } else {
+          ctx.fillStyle = gradientFill || fg.palette[0];
+        }
         ctx.fillRect(x, y, cs, cs);
       } else if (this.marks[r][c]) {
         ctx.strokeStyle = "#64748b";
@@ -381,22 +426,25 @@ class NonogramGame {
 
   async updateStatus() {
     if (this.won || this._checkingWin) return;
-    if (!this.checkWin()) { this.statusEl.textContent = ""; return; }
+    if (!this.checkWin()) {
+      if (!this.statusEl.classList.contains("error")) this.setStatus("");
+      return;
+    }
     this._checkingWin = true;
     try {
       if (this.puzzle.strict) {
         const actual = await this.gridHash();
         const expected = this.puzzle.options.hash;
-        if (!this.checkWin()) { this.statusEl.textContent = ""; return; }
+        if (!this.checkWin()) return;
         if (expected === "sha256:" + actual || expected === actual) {
           this.won = true;
-          this.statusEl.textContent = "Solved ✓";
+          this.setStatus("Solved ✓");
         } else {
-          this.statusEl.textContent = "All clues satisfied — but not the intended solution.";
+          this.setStatus("All clues satisfied — but not the intended solution.");
         }
       } else {
         this.won = true;
-        this.statusEl.textContent = "Solved ✓";
+        this.setStatus("Solved ✓");
       }
     } finally { this._checkingWin = false; }
   }
@@ -463,23 +511,24 @@ class NonogramGame {
   }
 }
 
-// =============== Load / swap puzzle ===============
+// =============== Load ===============
 function loadPuzzle(text) {
   const wrap = document.getElementById("game-wrap");
   const statusEl = document.getElementById("status");
   const titleEl = document.getElementById("puzzle-title");
 
-  statusEl.textContent = "";
-  statusEl.style.color = "#4ade80";
-
   let puzzle;
   try {
     puzzle = parseNonogram(text);
   } catch (e) {
+    statusEl.classList.add("error");
     statusEl.textContent = "Error: " + e.message;
-    statusEl.style.color = "#f87171";
-    return false;
+    return { error: e.message };
   }
+
+  // Parse OK — now clear status and swap the board
+  statusEl.classList.remove("error");
+  statusEl.textContent = "";
 
   if (currentGame) { currentGame.destroy(); currentGame = null; }
   wrap.innerHTML = "";
@@ -492,17 +541,73 @@ function loadPuzzle(text) {
     currentGame = new NonogramGame(puzzle, canvas, titleEl, statusEl);
     currentGame.setupPointerEvents();
   } catch (e) {
+    statusEl.classList.add("error");
     statusEl.textContent = "Error: " + e.message;
-    statusEl.style.color = "#f87171";
-    return false;
+    return { error: e.message };
   }
 
   currentPuzzleText = text;
   document.getElementById("copy-puzzle").style.display = "";
-  return true;
+  return { ok: true };
 }
 
-// =============== Paste UI wiring ===============
+// =============== Copy (mobile-safe) ===============
+async function copyToClipboard(text) {
+  // Method 1: modern API
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) {
+      console.warn("clipboard.writeText failed:", e);
+    }
+  }
+
+  // Method 2: execCommand + offscreen textarea
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.cssText = "position:fixed;top:0;left:0;opacity:0.01;width:1px;height:1px;";
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  ta.setSelectionRange(0, text.length);
+
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch (e) {
+    console.warn("execCommand copy failed:", e);
+  }
+  document.body.removeChild(ta);
+
+  if (ok) return true;
+
+  // Method 3: show visible textarea for manual copy
+  showManualCopy(text);
+  return false;
+}
+
+function showManualCopy(text) {
+  const overlay = document.createElement("div");
+  overlay.className = "copy-fallback";
+  overlay.innerHTML = `
+    <div class="box">
+      <div class="hint">Auto-copy isn't available here. Select the text and copy it manually.</div>
+      <textarea readonly></textarea>
+      <button>Close</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const ta = overlay.querySelector("textarea");
+  const btn = overlay.querySelector("button");
+  ta.value = text;
+  ta.focus();
+  ta.select();
+  ta.setSelectionRange(0, text.length);
+  btn.onclick = () => document.body.removeChild(overlay);
+}
+
+// =============== Paste UI ===============
 const pastePanel = document.getElementById("paste-panel");
 const pasteInput = document.getElementById("paste-input");
 const pasteError = document.getElementById("paste-error");
@@ -522,28 +627,21 @@ document.getElementById("cancel-paste").onclick = () => {
 };
 
 document.getElementById("load-puzzle").onclick = () => {
-  const ok = loadPuzzle(pasteInput.value);
-  if (ok) {
+  const result = loadPuzzle(pasteInput.value);
+  if (result.ok) {
     pastePanel.classList.add("hidden");
     pasteError.textContent = "";
   } else {
-    pasteError.textContent = "Could not load — see the error below the board.";
+    pasteError.textContent = result.error;
   }
 };
 
 document.getElementById("copy-puzzle").onclick = async () => {
-  try {
-    await navigator.clipboard.writeText(currentPuzzleText.trim());
-    const btn = document.getElementById("copy-puzzle");
-    const old = btn.textContent;
-    btn.textContent = "✓ Copied!";
-    setTimeout(() => btn.textContent = old, 1200);
-  } catch {
-    // Fallback: select a textarea so user can Ctrl+C manually
-    pasteInput.value = currentPuzzleText.trim();
-    pastePanel.classList.remove("hidden");
-    pasteInput.select();
-  }
+  const btn = document.getElementById("copy-puzzle");
+  const old = btn.textContent;
+  const ok = await copyToClipboard(currentPuzzleText.trim());
+  btn.textContent = ok ? "✓ Copied!" : "Copy manually";
+  setTimeout(() => btn.textContent = old, 1500);
 };
 
 // =============== Boot ===============
