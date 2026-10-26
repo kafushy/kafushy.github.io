@@ -28,10 +28,73 @@
   .color-picker { display: flex; gap: 0.25rem; align-items: center; }
   .color-swatch { width: 24px; height: 24px; border-radius: 4px; cursor: pointer; border: 2px solid transparent; box-sizing: border-box; }
   .color-swatch.active { border-color: #fff; box-shadow: 0 0 0 2px #38bdf8; }
+.paste-bar {
+  display: flex; gap: 0.4rem; margin-bottom: 0.5rem;
+  justify-content: center; flex-wrap: wrap;
+}
+.paste-bar button {
+  background: #1e293b; color: #e2e8f0;
+  border: 1px solid #334155; border-radius: 6px;
+  padding: 0.4rem 0.8rem; font-size: 0.8rem;
+  cursor: pointer; font-family: inherit;
+}
+.paste-bar button:hover { background: #334155; }
+.paste-panel {
+  background: #1e293b; border-radius: 8px;
+  padding: 0.75rem; margin-bottom: 0.75rem;
+  max-width: 600px; width: 100%;
+}
+.paste-panel.hidden { display: none; }
+#paste-input {
+  width: 100%; min-height: 140px;
+  background: #0f172a; color: #e2e8f0;
+  border: 1px solid #334155; border-radius: 6px;
+  padding: 0.6rem; font-family: ui-monospace, monospace;
+  font-size: 0.8rem; resize: vertical;
+  box-sizing: border-box;
+}
+#paste-input:focus { outline: 2px solid #38bdf8; border-color: transparent; }
+.paste-actions {
+  display: flex; gap: 0.4rem; margin-top: 0.5rem;
+}
+.paste-actions button {
+  flex: 1; padding: 0.5rem; border-radius: 6px;
+  border: 1px solid #334155; font-family: inherit;
+  font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  background: #38bdf8; color: #0f172a;
+}
+.paste-actions button.secondary {
+  background: #334155; color: #e2e8f0; font-weight: 400;
+}
+.paste-actions button:hover { filter: brightness(1.1); }
+.paste-error {
+  color: #f87171; font-size: 0.8rem; margin-top: 0.5rem;
+  min-height: 1em;
+}
 </style>
 </head>
 <body>
 <h1 id="puzzle-title">Nonogram</h1>
+
+<!-- ============ NEW: paste area ============ -->
+<div class="paste-bar">
+  <button id="toggle-paste">📋 Paste a puzzle</button>
+  <button id="copy-puzzle" style="display:none;">⧉ Copy current puzzle</button>
+</div>
+<div id="paste-panel" class="paste-panel hidden">
+  <textarea id="paste-input" placeholder="Paste a nonogram here...
+
+kafushy, Heart, 2026-10-26, v1
+#0f172a #1e293b 180 3 1 / #38bdf8 90 1
+/2.4.4.4.2/1 1.5.5.3.1"></textarea>
+  <div class="paste-actions">
+    <button id="load-puzzle">Load</button>
+    <button id="cancel-paste" class="secondary">Cancel</button>
+  </div>
+  <div id="paste-error" class="paste-error"></div>
+</div>
+<!-- ============ end new ============ -->
+
 <div class="toolbar">
   <button id="tool-fill" class="active">Fill</button>
   <button id="tool-mark">Mark ×</button>
@@ -39,19 +102,22 @@
   <span id="color-picker" class="color-picker" style="display:none;"></span>
   <button id="reset">Reset</button>
 </div>
-<canvas id="board"></canvas>
+<div id="game-wrap"></div>
 <div id="status"></div>
 
 <script src="./format.js"></script>
 <script>
-// =============== EXAMPLE PUZZLE ===============
-// Replace this with file loading later
-const PUZZLE_TEXT = `
+// =============== DEFAULT PUZZLE ===============
+const DEFAULT_PUZZLE_TEXT = `
 kafushy, Heart, 2026-10-26, v1
 #0f172a #1e293b 180 3 1 / #38bdf8 90 1
 /2.4.4.4.2/1 1.5.5.3.1
 `;
 
+let currentGame = null;
+let currentPuzzleText = DEFAULT_PUZZLE_TEXT;
+
+// =============== NonogramGame (unchanged) ===============
 class NonogramGame {
   constructor(puzzle, canvas, titleEl, statusEl) {
     this.puzzle = puzzle;
@@ -84,12 +150,18 @@ class NonogramGame {
     this.setupTools();
     this.resize();
     this.render();
-    window.addEventListener("resize", () => { this.resize(); this.render(); });
+    this._onResize = () => { this.resize(); this.render(); };
+    window.addEventListener("resize", this._onResize);
+  }
+
+  destroy() {
+    window.removeEventListener("resize", this._onResize);
   }
 
   setupColorPicker() {
-    if (!this.puzzle.multiColor) return;
     const picker = document.getElementById("color-picker");
+    picker.innerHTML = "";
+    if (!this.puzzle.multiColor) { picker.style.display = "none"; return; }
     picker.style.display = "flex";
     this.puzzle.fg.palette.forEach((hex, i) => {
       const sw = document.createElement("div");
@@ -97,7 +169,7 @@ class NonogramGame {
       sw.style.background = hex;
       sw.onclick = () => {
         this.currentColor = i + 1;
-        document.querySelectorAll(".color-swatch").forEach(s => s.classList.remove("active"));
+        picker.querySelectorAll(".color-swatch").forEach(s => s.classList.remove("active"));
         sw.classList.add("active");
       };
       picker.appendChild(sw);
@@ -126,7 +198,7 @@ class NonogramGame {
 
   resize() {
     const maxW = Math.min(window.innerWidth - 32, 900);
-    const maxH = Math.min(window.innerHeight - 200, 900);
+    const maxH = Math.min(window.innerHeight - 260, 900);
     const clueFactor = 0.7;
     const totalWCells = this.M + this.maxRowClues * clueFactor;
     const totalHCells = this.N + this.maxColClues * clueFactor;
@@ -175,10 +247,7 @@ class NonogramGame {
       cx - dx*len/2, cy - dy*len/2,
       cx + dx*len/2, cy + dy*len/2);
     const n = palette.length;
-    if (n === 1) {
-      grad.addColorStop(0, palette[0]); grad.addColorStop(1, palette[0]);
-      return grad;
-    }
+    if (n === 1) { grad.addColorStop(0, palette[0]); grad.addColorStop(1, palette[0]); return grad; }
     const positions = [0]; let cum = 0;
     for (let i = 0; i < n; i++) { cum += weights[i]; positions.push(cum); }
     for (let i = 0; i < n; i++) {
@@ -317,8 +386,8 @@ class NonogramGame {
     try {
       if (this.puzzle.strict) {
         const actual = await this.gridHash();
-        if (!this.checkWin()) { this.statusEl.textContent = ""; return; }
         const expected = this.puzzle.options.hash;
+        if (!this.checkWin()) { this.statusEl.textContent = ""; return; }
         if (expected === "sha256:" + actual || expected === actual) {
           this.won = true;
           this.statusEl.textContent = "Solved ✓";
@@ -394,21 +463,91 @@ class NonogramGame {
   }
 }
 
-try {
-  const puzzle = parseNonogram(PUZZLE_TEXT);
-  const game = new NonogramGame(
-    puzzle,
-    document.getElementById("board"),
-    document.getElementById("puzzle-title"),
-    document.getElementById("status")
-  );
-  game.setupPointerEvents();
-} catch (e) {
-  const s = document.getElementById("status");
-  s.textContent = "Error: " + e.message;
-  s.style.color = "#f87171";
-  console.error(e);
+// =============== Load / swap puzzle ===============
+function loadPuzzle(text) {
+  const wrap = document.getElementById("game-wrap");
+  const statusEl = document.getElementById("status");
+  const titleEl = document.getElementById("puzzle-title");
+
+  statusEl.textContent = "";
+  statusEl.style.color = "#4ade80";
+
+  let puzzle;
+  try {
+    puzzle = parseNonogram(text);
+  } catch (e) {
+    statusEl.textContent = "Error: " + e.message;
+    statusEl.style.color = "#f87171";
+    return false;
+  }
+
+  if (currentGame) { currentGame.destroy(); currentGame = null; }
+  wrap.innerHTML = "";
+
+  const canvas = document.createElement("canvas");
+  canvas.id = "board";
+  wrap.appendChild(canvas);
+
+  try {
+    currentGame = new NonogramGame(puzzle, canvas, titleEl, statusEl);
+    currentGame.setupPointerEvents();
+  } catch (e) {
+    statusEl.textContent = "Error: " + e.message;
+    statusEl.style.color = "#f87171";
+    return false;
+  }
+
+  currentPuzzleText = text;
+  document.getElementById("copy-puzzle").style.display = "";
+  return true;
 }
+
+// =============== Paste UI wiring ===============
+const pastePanel = document.getElementById("paste-panel");
+const pasteInput = document.getElementById("paste-input");
+const pasteError = document.getElementById("paste-error");
+
+document.getElementById("toggle-paste").onclick = () => {
+  pastePanel.classList.toggle("hidden");
+  if (!pastePanel.classList.contains("hidden")) {
+    pasteInput.value = currentPuzzleText.trim();
+    pasteInput.focus();
+    pasteError.textContent = "";
+  }
+};
+
+document.getElementById("cancel-paste").onclick = () => {
+  pastePanel.classList.add("hidden");
+  pasteError.textContent = "";
+};
+
+document.getElementById("load-puzzle").onclick = () => {
+  const ok = loadPuzzle(pasteInput.value);
+  if (ok) {
+    pastePanel.classList.add("hidden");
+    pasteError.textContent = "";
+  } else {
+    pasteError.textContent = "Could not load — see the error below the board.";
+  }
+};
+
+document.getElementById("copy-puzzle").onclick = async () => {
+  try {
+    await navigator.clipboard.writeText(currentPuzzleText.trim());
+    const btn = document.getElementById("copy-puzzle");
+    const old = btn.textContent;
+    btn.textContent = "✓ Copied!";
+    setTimeout(() => btn.textContent = old, 1200);
+  } catch {
+    // Fallback: select a textarea so user can Ctrl+C manually
+    pasteInput.value = currentPuzzleText.trim();
+    pastePanel.classList.remove("hidden");
+    pasteInput.select();
+  }
+};
+
+// =============== Boot ===============
+loadPuzzle(DEFAULT_PUZZLE_TEXT);
 </script>
 </body>
 </html>
