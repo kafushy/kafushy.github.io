@@ -1,4 +1,8 @@
 // nonogram/format.js — Parser for the kafushy nonogram format (NONO v1)
+//
+// Gradient syntax (new):
+//   #hex1 [ratio1] #hex2 [ratio2] ... angle
+// Hex colors may omit the leading '#'. Ratio defaults to 1 per color.
 
 function parseNonogram(text) {
   const lines = text.trim().split(/\r?\n/).map(l => l.trim()).filter(l => l);
@@ -17,7 +21,7 @@ function parseNonogram(text) {
   const options = lines[3] ? parseOptions(lines[3]) : {};
 
   if (composition.maxColor > fg.palette.length)
-    throw new Error(`Color ${composition.maxColor} used but fg palette only has ${fg.palette.length}`);
+    throw new Error(`Color ${composition.maxColor} used but fg palette has ${fg.palette.length}`);
   if (composition.maxColor > 1 && fg.palette.length === 1)
     throw new Error(`Multi-color clues but fg palette has only 1 color`);
 
@@ -32,19 +36,47 @@ function parseNonogram(text) {
   };
 }
 
+// --- color detection ---
+function isHexColor(tok) {
+  if (/^#[0-9a-fA-F]{3}$/.test(tok)) return true;
+  if (/^#[0-9a-fA-F]{6}$/.test(tok)) return true;
+  if (/^[0-9a-fA-F]{6}$/.test(tok)) return true;
+  return false;
+}
+function normalizeHex(tok) {
+  let h = tok.startsWith('#') ? tok.slice(1) : tok;
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  return '#' + h.toLowerCase();
+}
+
+// --- gradient parsing ---
+// Syntax: #hex [ratio] #hex [ratio] ... angle
 function parseGradient(s) {
   const tokens = s.split(/\s+/).filter(t => t);
+  if (tokens.length < 2) throw new Error("Gradient: too few tokens");
+
+  // Last token is angle (must be a number)
+  const angleTok = tokens[tokens.length - 1];
+  const angle = parseFloat(angleTok);
+  if (isNaN(angle) || isHexColor(angleTok))
+    throw new Error("Gradient: last token must be an angle (number)");
+
   const palette = [];
-  let i = 0;
-  while (i < tokens.length && tokens[i].startsWith('#')) {
-    palette.push(tokens[i]); i++;
+  const ratios = [];
+  for (let i = 0; i < tokens.length - 1; i++) {
+    const tok = tokens[i];
+    if (isHexColor(tok)) {
+      palette.push(normalizeHex(tok));
+      ratios.push(1); // default
+    } else {
+      const n = parseFloat(tok);
+      if (isNaN(n)) throw new Error(`Gradient: bad token "${tok}"`);
+      if (palette.length === 0) throw new Error("Gradient: ratio before first color");
+      ratios[palette.length - 1] = n;
+    }
   }
   if (palette.length === 0) throw new Error("Gradient: no palette colors");
-  if (i >= tokens.length) throw new Error("Gradient: missing angle");
-  const angle = parseFloat(tokens[i++]);
-  if (isNaN(angle)) throw new Error("Gradient: bad angle");
-  const ratios = tokens.slice(i).map(parseFloat);
-  if (ratios.some(isNaN)) throw new Error("Gradient: bad ratio");
+
   return { palette, angle, ratios, weights: normalizeRatios(ratios, palette.length) };
 }
 
@@ -59,6 +91,7 @@ function normalizeRatios(ratios, count) {
   return r.map(v => v / sum);
 }
 
+// --- composition ---
 function parseComposition(spec) {
   if (!spec.startsWith('/')) throw new Error("Line 3: must start with '/'");
   const parts = spec.split('/').slice(1);
