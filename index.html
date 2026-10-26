@@ -1,9 +1,257 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>titulo</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Game</title>
+  <style>
+    /* ---------- Basic reset & look ---------- */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .card {
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+    h1 { font-size: 1.4rem; margin-bottom: 1rem; text-align: center; }
+    label { display: block; font-size: 0.85rem; margin-bottom: 0.25rem; color: #94a3b8; }
+    input {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      margin-bottom: 0.9rem;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-size: 0.95rem;
+    }
+    input:focus { outline: 2px solid #38bdf8; border-color: transparent; }
+    button {
+      width: 100%;
+      padding: 0.65rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: #38bdf8;
+      color: #0f172a;
+      margin-bottom: 0.5rem;
+      transition: background 0.15s;
+    }
+    button:hover { background: #7dd3fc; }
+    button.secondary { background: #334155; color: #e2e8f0; }
+    button.secondary:hover { background: #475569; }
+    .hidden { display: none; }
+    .msg {
+      font-size: 0.85rem;
+      text-align: center;
+      margin-top: 0.75rem;
+      min-height: 1.2em;
+    }
+    .msg.error { color: #f87171; }
+    .msg.ok { color: #4ade80; }
+    .user-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid #334155;
+    }
+    .game-area {
+      text-align: center;
+      margin: 1rem 0;
+    }
+    .counter {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: #38bdf8;
+      margin: 0.5rem 0;
+    }
+  </style>
 </head>
 <body>
-  <h1>yo</h1>
+  <div class="card">
+    <!-- ============ LOGGED OUT VIEW ============ -->
+    <div id="auth-view">
+      <h1>🎮 My Game</h1>
+      <label for="email">Email</label>
+      <input id="email" type="email" placeholder="you@example.com" autocomplete="email" />
+      <label for="password">Password</label>
+      <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
+
+      <button id="login-btn">Log in</button>
+      <button id="signup-btn" class="secondary">Sign up</button>
+      <div id="auth-msg" class="msg"></div>
+    </div>
+
+    <!-- ============ LOGGED IN VIEW ============ -->
+    <div id="game-view" class="hidden">
+      <div class="user-bar">
+        <span id="user-email">…</span>
+        <button id="logout-btn" class="secondary" style="width:auto; margin:0; padding:0.3rem 0.7rem; font-size:0.8rem;">Log out</button>
+      </div>
+
+      <div class="game-area">
+        <p style="color:#94a3b8; font-size:0.9rem;">Your saved score</p>
+        <div id="score-display" class="counter">0</div>
+        <button id="score-btn">+1 point</button>
+        <button id="save-btn" class="secondary">Save to cloud</button>
+        <div id="game-msg" class="msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------- Supabase library (CDN) ---------- -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script>
+    // ============================================================
+    // 1. FILL THESE IN from Supabase Dashboard > Project Settings > API
+    // ============================================================
+    const SUPABASE_URL = "PASTE_YOUR_PROJECT_URL_HERE";
+    const SUPABASE_ANON_KEY = "PASTE_YOUR_ANON_PUBLIC_KEY_HERE";
+
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // ============================================================
+    // 2. Grab DOM elements
+    // ============================================================
+    const authView   = document.getElementById("auth-view");
+    const gameView   = document.getElementById("game-view");
+    const emailInput = document.getElementById("email");
+    const passInput  = document.getElementById("password");
+    const authMsg    = document.getElementById("auth-msg");
+    const gameMsg    = document.getElementById("game-msg");
+    const userEmail  = document.getElementById("user-email");
+    const scoreEl    = document.getElementById("score-display");
+
+    let currentScore = 0; // local score for this session
+
+    // ============================================================
+    // 3. Helpers
+    // ============================================================
+    function showMsg(el, text, type) {
+      el.textContent = text;
+      el.className = "msg " + (type || "");
+    }
+
+    async function showGameView(user) {
+      authView.classList.add("hidden");
+      gameView.classList.remove("hidden");
+      userEmail.textContent = user.email;
+      await loadScore(user.id);
+    }
+
+    function showAuthView() {
+      gameView.classList.add("hidden");
+      authView.classList.remove("hidden");
+      emailInput.value = "";
+      passInput.value = "";
+      showMsg(authMsg, "", "");
+    }
+
+    // ============================================================
+    // 4. Auth: sign up / log in / log out
+    // ============================================================
+    document.getElementById("signup-btn").onclick = async () => {
+      showMsg(authMsg, "Creating account…", "");
+      const { data, error } = await db.auth.signUp({
+        email: emailInput.value,
+        password: passInput.value,
+      });
+      if (error) return showMsg(authMsg, error.message, "error");
+      if (data.session) {
+        showMsg(authMsg, "Account created! Logged in.", "ok");
+        showGameView(data.user);
+      } else {
+        showMsg(authMsg, "Check your email to confirm your account.", "ok");
+      }
+    };
+
+    document.getElementById("login-btn").onclick = async () => {
+      showMsg(authMsg, "Logging in…", "");
+      const { data, error } = await db.auth.signInWithPassword({
+        email: emailInput.value,
+        password: passInput.value,
+      });
+      if (error) return showMsg(authMsg, error.message, "error");
+      showMsg(authMsg, "", "");
+      showGameView(data.user);
+    };
+
+    document.getElementById("logout-btn").onclick = async () => {
+      await db.auth.signOut();
+      showAuthView();
+    };
+
+    // ============================================================
+    // 5. Game logic + cloud save
+    // ============================================================
+    document.getElementById("score-btn").onclick = () => {
+      currentScore++;
+      scoreEl.textContent = currentScore;
+    };
+
+    document.getElementById("save-btn").onclick = async () => {
+      showMsg(gameMsg, "Saving…", "");
+      const { data: { user } } = await db.auth.getUser();
+      if (!user) return showMsg(gameMsg, "Not logged in.", "error");
+
+      // Upsert = insert if new, update if exists
+      const { error } = await db
+        .from("game_saves")
+        .upsert({ user_id: user.id, score: currentScore }, { onConflict: "user_id" });
+
+      if (error) return showMsg(gameMsg, error.message, "error");
+      showMsg(gameMsg, "Saved to cloud ✓", "ok");
+    };
+
+    async function loadScore(userId) {
+      const { data, error } = await db
+        .from("game_saves")
+        .select("score")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (error) {
+        showMsg(gameMsg, error.message, "error");
+        return;
+      }
+      currentScore = data?.score ?? 0;
+      scoreEl.textContent = currentScore;
+    }
+
+    // ============================================================
+    // 6. On page load: are we already logged in?
+    // ============================================================
+    (async () => {
+      const { data: { session } } = await db.auth.getSession();
+      if (session) showGameView(session.user);
+      else showAuthView();
+    })();
+
+    // React to login/logout from other tabs or email confirmation
+    db.auth.onAuthStateChange((_event, session) => {
+      if (session) showGameView(session.user);
+      else showAuthView();
+    });
+  </script>
 </body>
-</html> 
+</html>
