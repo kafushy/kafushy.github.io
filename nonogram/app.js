@@ -2,12 +2,33 @@
 
 const DEFAULT_PUZZLE_TEXT = `
 kafushy, Heart, 2026-10-26, v1
-#0a0f1e 3 #1e293b 1 90 / #ef4444 90
+#050810 4 #1e2f45 1 90 / #ef4444 90
 /1 1.5.5.3.1/2.4.4.4.2
 `;
 
+// If the user's stored puzzle text matches any of these (old defaults),
+// silently upgrade to the new default.
+const OLD_DEFAULT_PUZZLES = [
+  `kafushy, Heart, 2026-10-26, v1
+#0f172a #1e293b 180 / #38bdf8 90
+/2.4.4.4.2/1 1.5.5.3.1`,
+  `kafushy, Heart, 2026-10-26, v1
+#0f172a 3 #1e293b 1 180 / #38bdf8 90
+/2.4.4.4.2/1 1.5.5.3.1`,
+  `kafushy, Heart, 2026-10-26, v1
+#0f172a 3 #1e293b 1 90 / #38bdf8 90
+/2.4.4.4.2/1 1.5.5.3.1`,
+  `kafushy, Heart, 2026-10-26, v1
+#0f172a 3 #1e293b 1 90 / #ef4444 90
+/1 1.5.5.3.1/2.4.4.4.2`,
+  `kafushy, Heart, 2026-10-26, v1
+#0a0f1e 3 #1e293b 1 90 / #ef4444 90
+/1 1.5.5.3.1/2.4.4.4.2`,
+];
+
 const DEFAULT_SETTINGS = {
   autoMark: false,
+  cleanupAutoMarks: true,
   autoGray: true,
   surroundedOnly: false,
   marksBlockFill: true,
@@ -37,8 +58,23 @@ function loadSettings() {
   } catch { return { ...DEFAULT_SETTINGS }; }
 }
 function saveSettings(s) { try { localStorage.setItem("nono_settings", JSON.stringify(s)); } catch {} }
-function loadPuzzleText() { return localStorage.getItem("nono_puzzleText") || DEFAULT_PUZZLE_TEXT; }
+
+function loadPuzzleText() {
+  const stored = localStorage.getItem("nono_puzzleText");
+  if (stored) {
+    const t = stored.trim();
+    if (OLD_DEFAULT_PUZZLES.some(d => d.trim() === t)) {
+      // Silently upgrade old default to new default
+      localStorage.setItem("nono_puzzleText", DEFAULT_PUZZLE_TEXT);
+      localStorage.removeItem("nono_state");
+      return DEFAULT_PUZZLE_TEXT;
+    }
+    return stored;
+  }
+  return DEFAULT_PUZZLE_TEXT;
+}
 function savePuzzleText(t) { try { localStorage.setItem("nono_puzzleText", t); } catch {} }
+
 function loadSavedState(puzzleText) {
   try {
     const raw = localStorage.getItem("nono_state");
@@ -82,6 +118,7 @@ document.addEventListener("DOMContentLoaded", () => {
   wireToolButton();
   wireGamepad();
   applyGamepadStyle();
+  updateAutoMarkVisibility();
   updateSurroundedOnlyVisibility();
   loadPuzzle(currentPuzzleText, loadSavedState(currentPuzzleText));
 });
@@ -107,6 +144,10 @@ function wireTabs() {
   });
 }
 
+function updateAutoMarkVisibility() {
+  const row = document.getElementById("row-cleanupAutoMarks");
+  if (row) row.style.display = settings.autoMark ? "flex" : "none";
+}
 function updateSurroundedOnlyVisibility() {
   const row = document.getElementById("row-surroundedOnly");
   if (row) row.style.display = settings.autoGray ? "flex" : "none";
@@ -137,7 +178,8 @@ function wireSettingsControls() {
     });
   };
 
-  bindToggle("set-autoMark", "autoMark");
+  bindToggle("set-autoMark", "autoMark", updateAutoMarkVisibility);
+  bindToggle("set-cleanupAutoMarks", "cleanupAutoMarks");
   bindToggle("set-autoGray", "autoGray", updateSurroundedOnlyVisibility);
   bindToggle("set-surroundedOnly", "surroundedOnly");
   bindToggle("set-marksBlockFill", "marksBlockFill");
@@ -366,31 +408,18 @@ function wireGamepad() {
   });
 }
 
+// GAMEPAD DRAG FIX:
+// On touch, pointerdown implicitly captures the pointer to the BUTTON, so all
+// subsequent pointermove / pointerup events fire on the BUTTON, NOT on document.
+// Previous code listened on document — hence drag never worked.
+// Now we explicitly capture the pointer to the button and listen on the button.
 function wireGamepadAction(btn, action) {
-  let painting = false;
-  let paintValue = null;
-  let paintedCells = new Set();
-  let onMove = null, onUp = null;
-
-  const tryPaintAt = (clientX, clientY) => {
-    if (!currentGame) return;
-    const rect = currentGame.canvas.getBoundingClientRect();
-    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
-    const cell = currentGame.pixelToCell(clientX - rect.left, clientY - rect.top);
-    if (!cell) return;
-    const key = `${cell.r},${cell.c}`;
-    if (paintedCells.has(key)) return;
-    paintedCells.add(key);
-    if (paintValue.type === "state") currentGame.setCell(cell.r, cell.c, paintValue.value);
-    else if (paintValue.type === "mark") currentGame.setMark(cell.r, cell.c, paintValue.value);
-    currentGame.render();
-  };
-
   btn.addEventListener("pointerdown", e => {
     e.preventDefault();
     if (!currentGame) return;
-    painting = true;
-    paintedCells = new Set();
+
+    let paintedCells = new Set();
+    let paintValue = null;
 
     const startCell = currentGame.cursor || { r: 0, c: 0 };
     if (action === "fill") {
@@ -401,21 +430,47 @@ function wireGamepadAction(btn, action) {
       paintValue = { type: "mark", value: !currentGame.marks[startCell.r][startCell.c] };
     }
 
+    const tryPaintAt = (clientX, clientY) => {
+      if (!currentGame) return;
+      const rect = currentGame.canvas.getBoundingClientRect();
+      if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
+      const cell = currentGame.pixelToCell(clientX - rect.left, clientY - rect.top);
+      if (!cell) return;
+      const key = `${cell.r},${cell.c}`;
+      if (paintedCells.has(key)) {
+        // still update the drag cell so highlight follows finger
+        currentGame.gamepadDragCell = cell;
+        currentGame.render();
+        return;
+      }
+      paintedCells.add(key);
+      if (paintValue.type === "state") currentGame.setCell(cell.r, cell.c, paintValue.value);
+      else if (paintValue.type === "mark") currentGame.setMark(cell.r, cell.c, paintValue.value);
+      currentGame.gamepadDragCell = cell;
+      currentGame.render();
+    };
+
     tryPaintAt(e.clientX, e.clientY);
 
-    onMove = ev => { if (painting) tryPaintAt(ev.clientX, ev.clientY); };
-    onUp = () => {
-      document.removeEventListener("pointermove", onMove);
-      document.removeEventListener("pointerup", onUp);
-      document.removeEventListener("pointercancel", onUp);
-      if (!painting) return;
-      painting = false;
-      if (currentGame && paintedCells.size === 0 && currentGame.cursor) {
-        const { r, c } = currentGame.cursor;
-        if (paintValue.type === "state") currentGame.setCell(r, c, paintValue.value);
-        else if (paintValue.type === "mark") currentGame.setMark(r, c, paintValue.value);
-      }
+    // Explicitly capture the pointer to the button
+    try { btn.setPointerCapture(e.pointerId); } catch {}
+
+    const onMove = ev => tryPaintAt(ev.clientX, ev.clientY);
+    const onUp = () => {
+      btn.removeEventListener("pointermove", onMove);
+      btn.removeEventListener("pointerup", onUp);
+      btn.removeEventListener("pointercancel", onUp);
+      try { btn.releasePointerCapture(e.pointerId); } catch {}
+
       if (currentGame) {
+        // If nothing was painted during drag (finger never left the button),
+        // fall back to acting on the cursor.
+        if (paintedCells.size === 0 && currentGame.cursor) {
+          const { r, c } = currentGame.cursor;
+          if (paintValue.type === "state") currentGame.setCell(r, c, paintValue.value);
+          else if (paintValue.type === "mark") currentGame.setMark(r, c, paintValue.value);
+        }
+        currentGame.gamepadDragCell = null;
         currentGame.autoMarkSolvedLines();
         currentGame.render();
       }
@@ -423,9 +478,9 @@ function wireGamepadAction(btn, action) {
       paintValue = null;
     };
 
-    document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp);
-    document.addEventListener("pointercancel", onUp);
+    btn.addEventListener("pointermove", onMove);
+    btn.addEventListener("pointerup", onUp);
+    btn.addEventListener("pointercancel", onUp);
   });
 }
 
