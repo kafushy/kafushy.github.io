@@ -1,30 +1,15 @@
 // nonogram/app.js
 
+// PUZZLE_VERSION is bumped each time DEFAULT_PUZZLE_TEXT changes.
+// When a user's stored puzzle matches the "default heart" shape AND their
+// stored version is older, we silently upgrade to the new default palette.
+const PUZZLE_VERSION = 5;
+
 const DEFAULT_PUZZLE_TEXT = `
 kafushy, Heart, 2026-10-26, v1
-#050810 4 #1e2f45 1 90 / #ef4444 90
+#0a0f23 1 #1e3a8a 1 90 / #ef4444 1 #991b1b 1 90
 /1 1.5.5.3.1/2.4.4.4.2
 `;
-
-// If the user's stored puzzle text matches any of these (old defaults),
-// silently upgrade to the new default.
-const OLD_DEFAULT_PUZZLES = [
-  `kafushy, Heart, 2026-10-26, v1
-#0f172a #1e293b 180 / #38bdf8 90
-/2.4.4.4.2/1 1.5.5.3.1`,
-  `kafushy, Heart, 2026-10-26, v1
-#0f172a 3 #1e293b 1 180 / #38bdf8 90
-/2.4.4.4.2/1 1.5.5.3.1`,
-  `kafushy, Heart, 2026-10-26, v1
-#0f172a 3 #1e293b 1 90 / #38bdf8 90
-/2.4.4.4.2/1 1.5.5.3.1`,
-  `kafushy, Heart, 2026-10-26, v1
-#0f172a 3 #1e293b 1 90 / #ef4444 90
-/1 1.5.5.3.1/2.4.4.4.2`,
-  `kafushy, Heart, 2026-10-26, v1
-#0a0f1e 3 #1e293b 1 90 / #ef4444 90
-/1 1.5.5.3.1/2.4.4.4.2`,
-];
 
 const DEFAULT_SETTINGS = {
   autoMark: false,
@@ -59,21 +44,34 @@ function loadSettings() {
 }
 function saveSettings(s) { try { localStorage.setItem("nono_settings", JSON.stringify(s)); } catch {} }
 
+function isDefaultHeartPuzzle(text) {
+  try {
+    const lines = text.trim().split("\n").map(l => l.trim()).filter(l => l);
+    if (lines.length < 3) return false;
+    if (!lines[0].startsWith("kafushy, Heart")) return false;
+    return lines[2].includes("/1 1.5.5.3.1/2.4.4.4.2");
+  } catch { return false; }
+}
+
 function loadPuzzleText() {
   const stored = localStorage.getItem("nono_puzzleText");
-  if (stored) {
-    const t = stored.trim();
-    if (OLD_DEFAULT_PUZZLES.some(d => d.trim() === t)) {
-      // Silently upgrade old default to new default
+  const storedVer = parseInt(localStorage.getItem("nono_puzzleVersion") || "0", 10);
+  if (stored && isDefaultHeartPuzzle(stored) && storedVer < PUZZLE_VERSION) {
+    try {
       localStorage.setItem("nono_puzzleText", DEFAULT_PUZZLE_TEXT);
+      localStorage.setItem("nono_puzzleVersion", String(PUZZLE_VERSION));
       localStorage.removeItem("nono_state");
-      return DEFAULT_PUZZLE_TEXT;
-    }
-    return stored;
+    } catch {}
+    return DEFAULT_PUZZLE_TEXT;
   }
-  return DEFAULT_PUZZLE_TEXT;
+  return stored || DEFAULT_PUZZLE_TEXT;
 }
-function savePuzzleText(t) { try { localStorage.setItem("nono_puzzleText", t); } catch {} }
+function savePuzzleText(t) {
+  try {
+    localStorage.setItem("nono_puzzleText", t);
+    localStorage.setItem("nono_puzzleVersion", String(PUZZLE_VERSION));
+  } catch {}
+}
 
 function loadSavedState(puzzleText) {
   try {
@@ -86,13 +84,7 @@ function loadSavedState(puzzleText) {
 }
 function persistState() {
   if (!currentGame) return;
-  try {
-    localStorage.setItem("nono_state", JSON.stringify({
-      puzzleText: currentPuzzleText,
-      state: currentGame.state,
-      marks: currentGame.marks,
-    }));
-  } catch {}
+  try { localStorage.setItem("nono_state", JSON.stringify({ puzzleText: currentPuzzleText, state: currentGame.state, marks: currentGame.marks })); } catch {}
 }
 function clearSavedState() { try { localStorage.removeItem("nono_state"); } catch {} }
 
@@ -137,9 +129,7 @@ function wireTabs() {
       const optionsEl = document.getElementById("options");
       if (wasActive) { optionsEl.classList.add("hidden"); return; }
       document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b === btn));
-      document.querySelectorAll(".tab-content").forEach(tc => {
-        tc.classList.toggle("hidden", tc.id !== "tab-" + tab);
-      });
+      document.querySelectorAll(".tab-content").forEach(tc => tc.classList.toggle("hidden", tc.id !== "tab-" + tab));
     });
   });
 }
@@ -166,13 +156,11 @@ function wireSettingsControls() {
   };
   const bindNumber = (id, key, min, max) => {
     const el = document.getElementById(id);
-    el.value = settings[key];
-    el.min = min; el.max = max;
+    el.value = settings[key]; el.min = min; el.max = max;
     el.addEventListener("change", () => {
       let v = parseInt(el.value) || 0;
       v = Math.max(min, Math.min(max, v));
-      el.value = v;
-      settings[key] = v;
+      el.value = v; settings[key] = v;
       saveSettings(settings);
       if (currentGame) currentGame.setSettings(settings);
     });
@@ -224,24 +212,21 @@ function wireSettingsControls() {
   scaleEl.value = settings.gamepadScale;
   scaleEl.addEventListener("input", () => {
     settings.gamepadScale = parseFloat(scaleEl.value);
-    saveSettings(settings);
-    applyGamepadStyle();
+    saveSettings(settings); applyGamepadStyle();
   });
 
   const posEl = document.getElementById("set-gamepadPosition");
   posEl.value = settings.gamepadPosition;
   posEl.addEventListener("change", () => {
     settings.gamepadPosition = posEl.value;
-    saveSettings(settings);
-    applyGamepadStyle();
+    saveSettings(settings); applyGamepadStyle();
   });
 
   const gpColor = document.getElementById("set-gamepadColor");
   gpColor.value = settings.gamepadColor;
   gpColor.addEventListener("input", () => {
     settings.gamepadColor = gpColor.value;
-    saveSettings(settings);
-    applyGamepadStyle();
+    saveSettings(settings); applyGamepadStyle();
   });
 
   bindToggle("set-cursorWrap", "cursorWrap");
@@ -288,8 +273,7 @@ function renderInfo(puzzle) {
 }
 
 function esc(s) {
-  return String(s ?? "").replace(/[&<>"']/g, c =>
-    ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
 function loadPuzzle(text, savedState) {
@@ -299,7 +283,6 @@ function loadPuzzle(text, savedState) {
 
   if (currentGame) { currentGame.destroy(); currentGame = null; }
   gameWrap.innerHTML = "";
-
   document.getElementById("creator").textContent = puzzle.author || "";
   document.getElementById("title").textContent = puzzle.title || "Nonogram";
 
@@ -376,10 +359,7 @@ function updateGamepadButtons() {
   const markBtn = document.getElementById("gp-mark");
   const fillBtn = document.getElementById("gp-fill");
   if (markBtn) markBtn.textContent = settings.markSymbol;
-  if (fillBtn) {
-    const fg = currentGame.puzzle.fg.palette;
-    gamepadEl.style.setProperty("--gp-fg", fg[0] || "#ef4444");
-  }
+  if (fillBtn) gamepadEl.style.setProperty("--gp-fg", currentGame.puzzle.fg.palette[0] || "#ef4444");
 }
 
 function wireGamepad() {
@@ -402,104 +382,139 @@ function wireGamepad() {
     btn.addEventListener("pointercancel", stop);
     btn.addEventListener("pointerleave", stop);
   });
-
   document.querySelectorAll(".act-btn").forEach(btn => {
     wireGamepadAction(btn, btn.dataset.action);
   });
 }
 
-// GAMEPAD DRAG FIX:
-// On touch, pointerdown implicitly captures the pointer to the BUTTON, so all
-// subsequent pointermove / pointerup events fire on the BUTTON, NOT on document.
-// Previous code listened on document — hence drag never worked.
-// Now we explicitly capture the pointer to the button and listen on the button.
+// ================================================================
+// GAMEPAD DRAG — the reliable implementation
+// Touch events (touchstart/move/end) ALWAYS fire on the original
+// target for the entire gesture on mobile Firefox/Waterfox, even
+// after the finger leaves the button. Pointer events with
+// setPointerCapture are unreliable there. So: touch events for
+// touch, pointer events for mouse/pen only.
+// ================================================================
 function wireGamepadAction(btn, action) {
-  btn.addEventListener("pointerdown", e => {
-    e.preventDefault();
+  let active = false;
+  let paintedCells = new Set();
+  let paintValue = null;
+
+  const tryPaintAt = (clientX, clientY) => {
     if (!currentGame) return;
-
-    let paintedCells = new Set();
-    let paintValue = null;
-
-    const startCell = currentGame.cursor || { r: 0, c: 0 };
-    if (action === "fill") {
-      const v = currentGame.state[startCell.r][startCell.c] === currentGame.currentColor
-        ? 0 : currentGame.currentColor;
-      paintValue = { type: "state", value: v };
-    } else if (action === "mark") {
-      paintValue = { type: "mark", value: !currentGame.marks[startCell.r][startCell.c] };
-    }
-
-    const tryPaintAt = (clientX, clientY) => {
-      if (!currentGame) return;
-      const rect = currentGame.canvas.getBoundingClientRect();
-      if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
-      const cell = currentGame.pixelToCell(clientX - rect.left, clientY - rect.top);
-      if (!cell) return;
-      const key = `${cell.r},${cell.c}`;
-      if (paintedCells.has(key)) {
-        // still update the drag cell so highlight follows finger
-        currentGame.gamepadDragCell = cell;
-        currentGame.render();
-        return;
-      }
-      paintedCells.add(key);
-      if (paintValue.type === "state") currentGame.setCell(cell.r, cell.c, paintValue.value);
-      else if (paintValue.type === "mark") currentGame.setMark(cell.r, cell.c, paintValue.value);
+    const rect = currentGame.canvas.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
+    const cell = currentGame.pixelToCell(clientX - rect.left, clientY - rect.top);
+    if (!cell) return;
+    const key = `${cell.r},${cell.c}`;
+    if (paintedCells.has(key)) {
       currentGame.gamepadDragCell = cell;
       currentGame.render();
-    };
+      return;
+    }
+    paintedCells.add(key);
+    if (paintValue.type === "state") currentGame.setCell(cell.r, cell.c, paintValue.value);
+    else if (paintValue.type === "mark") currentGame.setMark(cell.r, cell.c, paintValue.value);
+    currentGame.gamepadDragCell = cell;
+    currentGame.render();
+  };
 
-    tryPaintAt(e.clientX, e.clientY);
+  const start = (x, y) => {
+    if (!currentGame || active) return;
+    active = true;
+    paintedCells = new Set();
+    const c = currentGame.cursor || { r: 0, c: 0 };
+    if (action === "fill") {
+      const v = currentGame.state[c.r][c.c] === currentGame.currentColor ? 0 : currentGame.currentColor;
+      paintValue = { type: "state", value: v };
+    } else {
+      paintValue = { type: "mark", value: !currentGame.marks[c.r][c.c] };
+    }
+    tryPaintAt(x, y);
+  };
 
-    // Explicitly capture the pointer to the button
-    try { btn.setPointerCapture(e.pointerId); } catch {}
+  const move = (x, y) => {
+    if (!active) return;
+    tryPaintAt(x, y);
+  };
 
-    const onMove = ev => tryPaintAt(ev.clientX, ev.clientY);
-    const onUp = () => {
-      btn.removeEventListener("pointermove", onMove);
-      btn.removeEventListener("pointerup", onUp);
-      btn.removeEventListener("pointercancel", onUp);
-      try { btn.releasePointerCapture(e.pointerId); } catch {}
-
-      if (currentGame) {
-        // If nothing was painted during drag (finger never left the button),
-        // fall back to acting on the cursor.
-        if (paintedCells.size === 0 && currentGame.cursor) {
-          const { r, c } = currentGame.cursor;
-          if (paintValue.type === "state") currentGame.setCell(r, c, paintValue.value);
-          else if (paintValue.type === "mark") currentGame.setMark(r, c, paintValue.value);
-        }
-        currentGame.gamepadDragCell = null;
-        currentGame.autoMarkSolvedLines();
-        currentGame.render();
+  const end = () => {
+    if (!active) return;
+    active = false;
+    if (currentGame) {
+      if (paintedCells.size === 0 && currentGame.cursor) {
+        const { r, c } = currentGame.cursor;
+        if (paintValue.type === "state") currentGame.setCell(r, c, paintValue.value);
+        else if (paintValue.type === "mark") currentGame.setMark(r, c, paintValue.value);
       }
-      paintedCells.clear();
-      paintValue = null;
-    };
+      currentGame.gamepadDragCell = null;
+      currentGame.autoMarkSolvedLines();
+      currentGame.render();
+    }
+    paintedCells.clear();
+    paintValue = null;
+  };
 
-    btn.addEventListener("pointermove", onMove);
-    btn.addEventListener("pointerup", onUp);
-    btn.addEventListener("pointercancel", onUp);
+  // ---- Touch events (primary on mobile) ----
+  btn.addEventListener("touchstart", e => {
+    e.preventDefault();
+    const t = e.touches[0];
+    start(t.clientX, t.clientY);
+  }, { passive: false });
+
+  btn.addEventListener("touchmove", e => {
+    if (!active) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    move(t.clientX, t.clientY);
+  }, { passive: false });
+
+  btn.addEventListener("touchend", e => {
+    if (!active) return;
+    e.preventDefault();
+    end();
+  }, { passive: false });
+
+  btn.addEventListener("touchcancel", () => { if (active) end(); });
+
+  // ---- Pointer events for mouse/pen ONLY ----
+  btn.addEventListener("pointerdown", e => {
+    if (e.pointerType === "touch") return; // touch handled above
+    e.preventDefault();
+    start(e.clientX, e.clientY);
+    try { btn.setPointerCapture(e.pointerId); } catch {}
+  });
+
+  btn.addEventListener("pointermove", e => {
+    if (e.pointerType === "touch") return;
+    if (!active) return;
+    move(e.clientX, e.clientY);
+  });
+
+  btn.addEventListener("pointerup", e => {
+    if (e.pointerType === "touch") return;
+    if (!active) return;
+    end();
+    try { btn.releasePointerCapture(e.pointerId); } catch {}
+  });
+
+  btn.addEventListener("pointercancel", e => {
+    if (e.pointerType === "touch") return;
+    if (active) end();
   });
 }
 
 function wireToolButton() {
   let gesture = {
-    active: false, startX: 0, startY: 0,
-    moved: false, resetFired: false,
-    resetTimer: null,
+    active: false, startX: 0, startY: 0, moved: false, resetFired: false, resetTimer: null,
   };
 
   toolBtn.addEventListener("pointerdown", e => {
     e.preventDefault();
     gesture.active = true;
-    gesture.startX = e.clientX;
-    gesture.startY = e.clientY;
-    gesture.moved = false;
-    gesture.resetFired = false;
+    gesture.startX = e.clientX; gesture.startY = e.clientY;
+    gesture.moved = false; gesture.resetFired = false;
     toolBtn.classList.add("held");
-
     gesture.resetTimer = setTimeout(() => {
       if (!gesture.moved && currentGame) {
         gesture.resetFired = true;
@@ -510,7 +525,6 @@ function wireToolButton() {
         setTimeout(() => toolBtn.classList.remove("flash"), 500);
       }
     }, 1000);
-
     try { toolBtn.setPointerCapture(e.pointerId); } catch {}
   });
 

@@ -59,16 +59,11 @@ class NonogramGame {
         this.render();
       });
     });
-    if (this.canvas.parentElement) {
-      this._resizeObserver.observe(this.canvas.parentElement);
-    }
+    if (this.canvas.parentElement) this._resizeObserver.observe(this.canvas.parentElement);
 
     this._keyHandler = (e) => {
       if (!this.gamepadEnabled) return;
-      const moves = {
-        ArrowUp: [-1, 0], ArrowDown: [1, 0],
-        ArrowLeft: [0, -1], ArrowRight: [0, 1],
-      };
+      const moves = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
       const m = moves[e.key];
       if (m) { e.preventDefault(); this.moveCursor(m[0], m[1]); }
     };
@@ -83,7 +78,6 @@ class NonogramGame {
 
   setTool(t) { this.tool = t; }
   setSettings(s) { this.settings = s; this.resize(); this.render(); }
-
   setStatus(text, isError) {
     if (!this.statusEl) return;
     if (!text) { this.statusEl.classList.add("hidden"); return; }
@@ -91,37 +85,25 @@ class NonogramGame {
     this.statusEl.textContent = text;
     this.statusEl.classList.toggle("error", !!isError);
   }
-
   notifyChange() { if (this.onStateChange) this.onStateChange(); }
 
   getClueSides() {
     const pos = this.settings.cluePos || "top-left";
-    return {
-      row: pos.endsWith("left") ? "left" : "right",
-      col: pos.startsWith("top") ? "top" : "bottom",
-    };
+    return { row: pos.endsWith("left") ? "left" : "right", col: pos.startsWith("top") ? "top" : "bottom" };
   }
 
   setGamepadEnabled(enabled) {
     this.gamepadEnabled = enabled;
-    if (enabled && !this.cursor) {
-      this.cursor = { r: Math.floor(this.N / 2), c: Math.floor(this.M / 2) };
-    }
+    if (enabled && !this.cursor) this.cursor = { r: Math.floor(this.N / 2), c: Math.floor(this.M / 2) };
     this.render();
   }
 
   moveCursor(dr, dc) {
     if (!this.gamepadEnabled) return;
     if (!this.cursor) this.cursor = { r: 0, c: 0 };
-    let nr = this.cursor.r + dr;
-    let nc = this.cursor.c + dc;
-    if (this.settings.cursorWrap) {
-      nr = (nr + this.N) % this.N;
-      nc = (nc + this.M) % this.M;
-    } else {
-      nr = Math.max(0, Math.min(this.N - 1, nr));
-      nc = Math.max(0, Math.min(this.M - 1, nc));
-    }
+    let nr = this.cursor.r + dr, nc = this.cursor.c + dc;
+    if (this.settings.cursorWrap) { nr = (nr + this.N) % this.N; nc = (nc + this.M) % this.M; }
+    else { nr = Math.max(0, Math.min(this.N - 1, nr)); nc = Math.max(0, Math.min(this.M - 1, nc)); }
     this.cursor.r = nr; this.cursor.c = nc;
     this.render();
   }
@@ -143,29 +125,31 @@ class NonogramGame {
     return this.invertColor(this.puzzle.fg.palette[v - 1] || "#fbbf24");
   }
 
-  // End of current placement (last cell of drag preview, or gamepad cursor, or hover)
   getHighlightEndCell() {
-    if (this.painting && this.previewTrail && this.previewTrail.length > 0) {
+    if (this.painting && this.previewTrail && this.previewTrail.length > 0)
       return this.previewTrail[this.previewTrail.length - 1];
-    }
     if (this.gamepadDragCell) return this.gamepadDragCell;
     if (this.gamepadEnabled && this.cursor) return this.cursor;
     if (this.highlightCell) return this.highlightCell;
     return null;
   }
 
+  // ============ FIXED SIZING ============
+  // Pad is symmetric (both sides), so total width = 2*padRow + M*cs.
+  // padRow ≈ maxRowClues * 0.7 * cs + 0.5 * cs + 4
+  // Therefore: cs <= (availW - 8) / (M + 1.4*maxRowClues + 1)
   resize() {
     const wrap = this.canvas.parentElement;
     const availW = (wrap?.clientWidth || window.innerWidth) - 16;
     const availH = (wrap?.clientHeight || window.innerHeight) - 16;
     const clueFactor = 0.7;
-    const totalWCells = this.M + this.maxRowClues * clueFactor;
-    const totalHCells = this.N + this.maxColClues * clueFactor;
-    let cs = Math.floor(Math.min(availW / totalWCells, availH / totalHCells));
+
+    const denomW = this.M + 2 * this.maxRowClues * clueFactor + 1;
+    const denomH = this.N + 2 * this.maxColClues * clueFactor + 1;
+    let cs = Math.floor(Math.min((availW - 8) / denomW, (availH - 8) / denomH));
     cs = Math.max(12, Math.min(56, cs));
     this.cellSize = cs;
 
-    // Symmetric pad with extra room so multi-clue rows don't clip
     this.padRow = Math.ceil(this.maxRowClues * cs * clueFactor + cs * 0.5) + 4;
     this.padCol = Math.ceil(this.maxColClues * cs * clueFactor + cs * 0.5) + 4;
     this.gridX = this.padRow;
@@ -186,9 +170,7 @@ class NonogramGame {
     this.logicalH = logicalH;
   }
 
-  cellToPixel(r, c) {
-    return { x: this.gridX + c * this.cellSize, y: this.gridY + r * this.cellSize };
-  }
+  cellToPixel(r, c) { return { x: this.gridX + c * this.cellSize, y: this.gridY + r * this.cellSize }; }
   pixelToCell(x, y) {
     const c = Math.floor((x - this.gridX) / this.cellSize);
     const r = Math.floor((y - this.gridY) / this.cellSize);
@@ -201,7 +183,7 @@ class NonogramGame {
     this.drawBackground();
     this.drawCells();
     this.drawPreview();
-    this.drawHighlight();     // 4 lines + clue backgrounds, drawn ABOVE cells
+    this.drawHighlight();
     this.drawGridLines();
     this.drawClues();
     this.drawCursor();
@@ -277,15 +259,9 @@ class NonogramGame {
       const x0 = Math.floor(x), y0 = Math.floor(y);
       const w = Math.ceil(x + cs) - x0, h = Math.ceil(y + cs) - y0;
       if (this.previewValue.type === "state") {
-        if (this.previewValue.value === 0) {
-          ctx.fillStyle = "#0f172a";
-          ctx.fillRect(x0, y0, w, h);
-        } else {
-          ctx.fillStyle = this.puzzle.multiColor
-            ? (fg.palette[this.previewValue.value - 1] || fg.palette[0])
-            : fg.palette[0];
-          ctx.fillRect(x0, y0, w, h);
-        }
+        ctx.fillStyle = this.previewValue.value === 0 ? "#0f172a"
+          : (this.puzzle.multiColor ? (fg.palette[this.previewValue.value - 1] || fg.palette[0]) : fg.palette[0]);
+        ctx.fillRect(x0, y0, w, h);
       } else if (this.previewValue.type === "mark" && this.previewValue.value) {
         ctx.fillStyle = "#94a3b8";
         ctx.font = `${Math.floor(cs * 0.55)}px system-ui, sans-serif`;
@@ -296,8 +272,6 @@ class NonogramGame {
     ctx.restore();
   }
 
-  // 4 lines along the sides of the highlighted tile (band through row + column)
-  // + slight bg tint on the matching clue areas
   drawHighlight() {
     if (!this.settings.highlight) return;
     const cell = this.getHighlightEndCell();
@@ -306,10 +280,9 @@ class NonogramGame {
     const cs = this.cellSize;
     const { x: cellX, y: cellY } = this.cellToPixel(cell.r, cell.c);
     const color = this.colorForCell(cell);
-
-    // ---- Clue background tints ----
     const sides = this.getClueSides();
     const gap = cs * 0.7;
+
     const rowClues = this.rows[cell.r].clues;
     const rowClueW = rowClues.length * gap + cs * 0.4;
     const rowBgX = sides.row === "left" ? this.gridX - rowClueW : this.gridX + this.gridW;
@@ -324,40 +297,17 @@ class NonogramGame {
     this.ctx.fillStyle = this.hexWithAlpha(color, 0.14);
     this.ctx.fillRect(Math.floor(colBgX), Math.floor(colBgY), Math.ceil(cs), Math.ceil(colClueH));
 
-    // ---- 4 lines ----
     this.ctx.save();
     this.ctx.shadowBlur = 6;
     this.ctx.shadowColor = color;
     this.ctx.strokeStyle = color;
     this.ctx.lineWidth = 2;
-
     const gx0 = this.gridX, gx1 = this.gridX + this.gridW;
     const gy0 = this.gridY, gy1 = this.gridY + this.gridH;
-
-    // Top of row
-    this.ctx.beginPath();
-    this.ctx.moveTo(gx0, cellY);
-    this.ctx.lineTo(gx1, cellY);
-    this.ctx.stroke();
-
-    // Bottom of row
-    this.ctx.beginPath();
-    this.ctx.moveTo(gx0, cellY + cs);
-    this.ctx.lineTo(gx1, cellY + cs);
-    this.ctx.stroke();
-
-    // Left of column
-    this.ctx.beginPath();
-    this.ctx.moveTo(cellX, gy0);
-    this.ctx.lineTo(cellX, gy1);
-    this.ctx.stroke();
-
-    // Right of column
-    this.ctx.beginPath();
-    this.ctx.moveTo(cellX + cs, gy0);
-    this.ctx.lineTo(cellX + cs, gy1);
-    this.ctx.stroke();
-
+    this.ctx.beginPath(); this.ctx.moveTo(gx0, cellY); this.ctx.lineTo(gx1, cellY); this.ctx.stroke();
+    this.ctx.beginPath(); this.ctx.moveTo(gx0, cellY + cs); this.ctx.lineTo(gx1, cellY + cs); this.ctx.stroke();
+    this.ctx.beginPath(); this.ctx.moveTo(cellX, gy0); this.ctx.lineTo(cellX, gy1); this.ctx.stroke();
+    this.ctx.beginPath(); this.ctx.moveTo(cellX + cs, gy0); this.ctx.lineTo(cellX + cs, gy1); this.ctx.stroke();
     this.ctx.restore();
   }
 
@@ -368,25 +318,15 @@ class NonogramGame {
 
     if (this.settings.tileBorders) {
       ctx.strokeStyle = "rgba(148,163,184,0.15)"; ctx.lineWidth = 1;
-      for (let c = 0; c <= this.M; c++) {
-        ctx.beginPath(); ctx.moveTo(x0+c*cs, y0); ctx.lineTo(x0+c*cs, y1); ctx.stroke();
-      }
-      for (let r = 0; r <= this.N; r++) {
-        ctx.beginPath(); ctx.moveTo(x0, y0+r*cs); ctx.lineTo(x1, y0+r*cs); ctx.stroke();
-      }
+      for (let c = 0; c <= this.M; c++) { ctx.beginPath(); ctx.moveTo(x0+c*cs, y0); ctx.lineTo(x0+c*cs, y1); ctx.stroke(); }
+      for (let r = 0; r <= this.N; r++) { ctx.beginPath(); ctx.moveTo(x0, y0+r*cs); ctx.lineTo(x1, y0+r*cs); ctx.stroke(); }
     }
-
     const step = this.settings.gridLineEvery;
     if (step > 0) {
       ctx.strokeStyle = "rgba(148,163,184,0.6)"; ctx.lineWidth = 2;
-      for (let c = 0; c <= this.M; c += step) {
-        ctx.beginPath(); ctx.moveTo(x0+c*cs, y0); ctx.lineTo(x0+c*cs, y1); ctx.stroke();
-      }
-      for (let r = 0; r <= this.N; r += step) {
-        ctx.beginPath(); ctx.moveTo(x0, y0+r*cs); ctx.lineTo(x1, y0+r*cs); ctx.stroke();
-      }
+      for (let c = 0; c <= this.M; c += step) { ctx.beginPath(); ctx.moveTo(x0+c*cs, y0); ctx.lineTo(x0+c*cs, y1); ctx.stroke(); }
+      for (let r = 0; r <= this.N; r += step) { ctx.beginPath(); ctx.moveTo(x0, y0+r*cs); ctx.lineTo(x1, y0+r*cs); ctx.stroke(); }
     }
-
     ctx.strokeStyle = "rgba(203,213,225,0.8)"; ctx.lineWidth = 2;
     ctx.strokeRect(x0, y0, this.gridW, this.gridH);
   }
@@ -402,9 +342,7 @@ class NonogramGame {
 
     for (let r = 0; r < this.N; r++) {
       const clues = this.rows[r].clues;
-      const matched = autoGray
-        ? this.matchClues(this.state[r], this.marks[r], clues, surrounded)
-        : null;
+      const matched = autoGray ? this.matchClues(this.state[r], this.marks[r], clues, surrounded) : null;
       const manual = this.manualGrayRows.get(r) || null;
       const isZero = clues.length === 1 && clues[0].value === 0;
       const lineEmpty = this.state[r].every(v => v === 0);
@@ -422,14 +360,11 @@ class NonogramGame {
         ctx.fillText(String(clue.value), cx, y + cs/2);
       }
     }
-
     for (let c = 0; c < this.M; c++) {
       const col = this.state.map(row => row[c]);
       const colMarks = this.marks.map(row => row[c]);
       const clues = this.cols[c].clues;
-      const matched = autoGray
-        ? this.matchClues(col, colMarks, clues, surrounded)
-        : null;
+      const matched = autoGray ? this.matchClues(col, colMarks, clues, surrounded) : null;
       const manual = this.manualGrayCols.get(c) || null;
       const isZero = clues.length === 1 && clues[0].value === 0;
       const lineEmpty = col.every(v => v === 0);
@@ -482,18 +417,13 @@ class NonogramGame {
     if (!threshold || threshold <= 0) return;
     if (!this.painting || !this.dragAxis || !this.dragStart || !this.dragCurrent) return;
     const s = this.dragStart, e = this.dragCurrent, cs = this.cellSize;
-    const len = this.dragAxis === "h"
-      ? Math.abs(e.c - s.c) + 1
-      : Math.abs(e.r - s.r) + 1;
+    const len = this.dragAxis === "h" ? Math.abs(e.c - s.c) + 1 : Math.abs(e.r - s.r) + 1;
     if (len < threshold) return;
-    const dirH = Math.sign(e.c - s.c);
-    const dirV = Math.sign(e.r - s.r);
+    const dirH = Math.sign(e.c - s.c), dirV = Math.sign(e.r - s.r);
     this.ctx.font = `bold ${Math.floor(cs * 0.35)}px system-ui, sans-serif`;
     this.ctx.textAlign = "center"; this.ctx.textBaseline = "top";
     for (let i = 0; i < len; i++) {
-      const cell = this.dragAxis === "h"
-        ? { r: s.r, c: s.c + i * dirH }
-        : { r: s.r + i * dirV, c: s.c };
+      const cell = this.dragAxis === "h" ? { r: s.r, c: s.c + i * dirH } : { r: s.r + i * dirV, c: s.c };
       const { x, y } = this.cellToPixel(cell.r, cell.c);
       this.ctx.fillStyle = "rgba(0,0,0,0.65)";
       this.ctx.fillText(String(i + 1), x + cs * 0.5 + 1, y + 3 + 1);
@@ -529,9 +459,7 @@ class NonogramGame {
   matchClues(cells, marks, clues, surroundedOnly) {
     const runs = this.extractRuns(cells);
     const matched = new Array(clues.length).fill(false);
-    if (clues.length === 1 && clues[0].value === 0) {
-      matched[0] = runs.length === 0; return matched;
-    }
+    if (clues.length === 1 && clues[0].value === 0) { matched[0] = runs.length === 0; return matched; }
     let ri = 0;
     for (let ci = 0; ci < clues.length; ci++) {
       while (ri < runs.length) {
@@ -554,44 +482,28 @@ class NonogramGame {
 
   checkWin() {
     for (let r = 0; r < this.N; r++) if (!this.lineSolved(this.state[r], this.rows[r].clues)) return false;
-    for (let c = 0; c < this.M; c++) {
-      if (!this.lineSolved(this.state.map(row => row[c]), this.cols[c].clues)) return false;
-    }
+    for (let c = 0; c < this.M; c++) if (!this.lineSolved(this.state.map(row => row[c]), this.cols[c].clues)) return false;
     return true;
   }
 
   autoMarkSolvedLines() {
     if (!this.settings.autoMark) return;
     let changed = false;
-
-    // 1. Cleanup orphaned auto-marks (only if enabled)
     if (this.settings.cleanupAutoMarks) {
       for (const key of [...this.autoMarkedCells]) {
         const [r, c] = key.split(",").map(Number);
-        if (!this.marks[r] || !this.marks[r][c]) {
-          this.autoMarkedCells.delete(key);
-          continue;
-        }
+        if (!this.marks[r] || !this.marks[r][c]) { this.autoMarkedCells.delete(key); continue; }
         const rowSolved = this.lineSolved(this.state[r], this.rows[r].clues);
         const colState = this.state.map(row => row[c]);
         const colSolved = this.lineSolved(colState, this.cols[c].clues);
-        if (!rowSolved && !colSolved) {
-          this.marks[r][c] = false;
-          this.autoMarkedCells.delete(key);
-          changed = true;
-        }
+        if (!rowSolved && !colSolved) { this.marks[r][c] = false; this.autoMarkedCells.delete(key); changed = true; }
       }
     }
-
-    // 2. Place auto-marks on solved lines
     for (let r = 0; r < this.N; r++) {
       if (this.lineSolved(this.state[r], this.rows[r].clues)) {
         for (let c = 0; c < this.M; c++) {
-          if (this.state[r][c] === 0 && !this.marks[r][c]
-              && !this.suppressedMarks.has(`${r},${c}`)) {
-            this.marks[r][c] = true;
-            this.autoMarkedCells.add(`${r},${c}`);
-            changed = true;
+          if (this.state[r][c] === 0 && !this.marks[r][c] && !this.suppressedMarks.has(`${r},${c}`)) {
+            this.marks[r][c] = true; this.autoMarkedCells.add(`${r},${c}`); changed = true;
           }
         }
       }
@@ -600,11 +512,8 @@ class NonogramGame {
       const col = this.state.map(row => row[c]);
       if (this.lineSolved(col, this.cols[c].clues)) {
         for (let r = 0; r < this.N; r++) {
-          if (this.state[r][c] === 0 && !this.marks[r][c]
-              && !this.suppressedMarks.has(`${r},${c}`)) {
-            this.marks[r][c] = true;
-            this.autoMarkedCells.add(`${r},${c}`);
-            changed = true;
+          if (this.state[r][c] === 0 && !this.marks[r][c] && !this.suppressedMarks.has(`${r},${c}`)) {
+            this.marks[r][c] = true; this.autoMarkedCells.add(`${r},${c}`); changed = true;
           }
         }
       }
@@ -631,9 +540,7 @@ class NonogramGame {
         const exp = this.puzzle.options.hash;
         if (exp === "sha256:" + h || exp === h) markWon();
       });
-    } else {
-      markWon();
-    }
+    } else markWon();
   }
 
   async gridHash() {
@@ -659,20 +566,15 @@ class NonogramGame {
     if (val && this.state[r][c] > 0 && this.settings.marksBlockFill) return;
     this.marks[r][c] = val;
     this.autoMarkedCells.delete(`${r},${c}`);
-    if (val) {
-      this.state[r][c] = 0;
-      this.suppressedMarks.delete(`${r},${c}`);
-    } else {
-      this.suppressedMarks.add(`${r},${c}`);
-    }
+    if (val) { this.state[r][c] = 0; this.suppressedMarks.delete(`${r},${c}`); }
+    else this.suppressedMarks.add(`${r},${c}`);
     this.manualGrayRows.delete(r);
     this.manualGrayCols.delete(c);
     this.notifyChange();
   }
   eraseCell(r, c) {
     if (this.state[r][c] === 0 && !this.marks[r][c]) return;
-    this.state[r][c] = 0;
-    this.marks[r][c] = false;
+    this.state[r][c] = 0; this.marks[r][c] = false;
     this.suppressedMarks.delete(`${r},${c}`);
     this.autoMarkedCells.delete(`${r},${c}`);
     this.manualGrayRows.delete(r);
@@ -681,9 +583,7 @@ class NonogramGame {
   }
 
   reset() {
-    for (let r = 0; r < this.N; r++) for (let c = 0; c < this.M; c++) {
-      this.state[r][c] = 0; this.marks[r][c] = false;
-    }
+    for (let r = 0; r < this.N; r++) for (let c = 0; c < this.M; c++) { this.state[r][c] = 0; this.marks[r][c] = false; }
     this.won = false;
     if (this._solvedRaf) { cancelAnimationFrame(this._solvedRaf); this._solvedRaf = null; }
     this.suppressedMarks.clear();
@@ -699,64 +599,42 @@ class NonogramGame {
 
   toggleManualGray(axis, index, clueIdx) {
     let cells, marks, clues;
-    if (axis === "row") {
-      cells = this.state[index]; marks = this.marks[index]; clues = this.rows[index].clues;
-    } else {
-      cells = this.state.map(r => r[index]); marks = this.marks.map(r => r[index]); clues = this.cols[index].clues;
-    }
+    if (axis === "row") { cells = this.state[index]; marks = this.marks[index]; clues = this.rows[index].clues; }
+    else { cells = this.state.map(r => r[index]); marks = this.marks.map(r => r[index]); clues = this.cols[index].clues; }
     const matched = this.matchClues(cells, marks, clues, false);
     if (!matched[clueIdx]) return;
     const map = axis === "row" ? this.manualGrayRows : this.manualGrayCols;
     if (!map.has(index)) map.set(index, new Set());
     const set = map.get(index);
-    if (set.has(clueIdx)) set.delete(clueIdx);
-    else set.add(clueIdx);
+    if (set.has(clueIdx)) set.delete(clueIdx); else set.add(clueIdx);
     this.render();
   }
 
   handleClueClick(clientX, clientY) {
     const rect = this.canvas.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-    const cs = this.cellSize;
-    const sides = this.getClueSides();
-    const gap = cs * 0.7;
-
-    const inRowZone = sides.row === "left"
-      ? (x >= 0 && x < this.gridX)
-      : (x >= this.gridX + this.gridW && x < this.logicalW);
+    const x = clientX - rect.left, y = clientY - rect.top;
+    const cs = this.cellSize, sides = this.getClueSides(), gap = cs * 0.7;
+    const inRowZone = sides.row === "left" ? (x >= 0 && x < this.gridX) : (x >= this.gridX + this.gridW && x < this.logicalW);
     if (inRowZone && y >= this.gridY && y < this.gridY + this.gridH) {
       const r = Math.floor((y - this.gridY) / cs);
       if (r >= 0 && r < this.N) {
         const clues = this.rows[r].clues;
         for (let i = 0; i < clues.length; i++) {
           const k = clues.length - 1 - i;
-          const cx = sides.row === "left"
-            ? this.gridX - (k + 0.5) * gap - 4
-            : this.gridX + this.gridW + (k + 0.5) * gap + 4;
-          if (Math.abs(x - cx) < cs * 0.45) {
-            this.toggleManualGray("row", r, i);
-            return true;
-          }
+          const cx = sides.row === "left" ? this.gridX - (k + 0.5) * gap - 4 : this.gridX + this.gridW + (k + 0.5) * gap + 4;
+          if (Math.abs(x - cx) < cs * 0.45) { this.toggleManualGray("row", r, i); return true; }
         }
       }
     }
-    const inColZone = sides.col === "top"
-      ? (y >= 0 && y < this.gridY)
-      : (y >= this.gridY + this.gridH && y < this.logicalH);
+    const inColZone = sides.col === "top" ? (y >= 0 && y < this.gridY) : (y >= this.gridY + this.gridH && y < this.logicalH);
     if (inColZone && x >= this.gridX && x < this.gridX + this.gridW) {
       const c = Math.floor((x - this.gridX) / cs);
       if (c >= 0 && c < this.M) {
         const clues = this.cols[c].clues;
         for (let i = 0; i < clues.length; i++) {
           const k = clues.length - 1 - i;
-          const cy = sides.col === "top"
-            ? this.gridY - (k + 0.5) * gap - 4
-            : this.gridY + this.gridH + (k + 0.5) * gap + 4;
-          if (Math.abs(y - cy) < cs * 0.45) {
-            this.toggleManualGray("col", c, i);
-            return true;
-          }
+          const cy = sides.col === "top" ? this.gridY - (k + 0.5) * gap - 4 : this.gridY + this.gridH + (k + 0.5) * gap + 4;
+          if (Math.abs(y - cy) < cs * 0.45) { this.toggleManualGray("col", c, i); return true; }
         }
       }
     }
@@ -765,8 +643,7 @@ class NonogramGame {
 
   computeTrail(start, end) {
     if (!start || !end) return [];
-    const dr = end.r - start.r;
-    const dc = end.c - start.c;
+    const dr = end.r - start.r, dc = end.c - start.c;
     if (dr === 0 && dc === 0) return [{ r: start.r, c: start.c }];
     const angle = Math.atan2(Math.abs(dr), Math.abs(dc));
     const isVertical = angle > Math.PI / 4;
@@ -790,16 +667,10 @@ class NonogramGame {
     canvas.addEventListener("contextmenu", e => e.preventDefault());
 
     canvas.addEventListener("pointerdown", e => {
-      if (this.gamepadEnabled) {
-        if (this.onGamepadTap) this.onGamepadTap();
-        return;
-      }
+      if (this.gamepadEnabled) { if (this.onGamepadTap) this.onGamepadTap(); return; }
       if (this.won) return;
       const cell = getCell(e);
-      if (!cell) {
-        this.handleClueClick(e.clientX, e.clientY);
-        return;
-      }
+      if (!cell) { this.handleClueClick(e.clientX, e.clientY); return; }
       this.painting = true;
       this.dragStart = { ...cell };
       this.dragCurrent = { ...cell };
@@ -807,12 +678,8 @@ class NonogramGame {
       this.dragAxis = null;
       this.highlightCell = { ...cell };
       const isRight = e.button === 2;
-      if (isRight || this.tool === "mark") {
-        this.paintValue = { type: "mark", value: !this.marks[cell.r][cell.c] };
-      } else {
-        const v = this.state[cell.r][cell.c] === this.currentColor ? 0 : this.currentColor;
-        this.paintValue = { type: "state", value: v };
-      }
+      if (isRight || this.tool === "mark") this.paintValue = { type: "mark", value: !this.marks[cell.r][cell.c] };
+      else { const v = this.state[cell.r][cell.c] === this.currentColor ? 0 : this.currentColor; this.paintValue = { type: "state", value: v }; }
       this.previewValue = this.paintValue;
       this.previewTrail = [{ ...cell }];
       this.render();
@@ -820,11 +687,7 @@ class NonogramGame {
 
     canvas.addEventListener("pointermove", e => {
       if (!this.painting) {
-        if (e.pointerType === "mouse") {
-          const cell = getCell(e);
-          this.highlightCell = cell;
-          this.render();
-        }
+        if (e.pointerType === "mouse") { const cell = getCell(e); this.highlightCell = cell; this.render(); }
         return;
       }
       if (this.won) return;
@@ -845,20 +708,15 @@ class NonogramGame {
       const trail = this.previewTrail || [];
       const pv = this.previewValue;
       this.painting = false;
-      const cancel = this.settings.noPaintIfReturnToStart
-        && this.dragMovedAway && trail.length === 1;
+      const cancel = this.settings.noPaintIfReturnToStart && this.dragMovedAway && trail.length === 1;
       if (!cancel && pv && trail.length > 0) {
         for (const cell of trail) {
           if (pv.type === "state") this.setCell(cell.r, cell.c, pv.value);
           else if (pv.type === "mark") this.setMark(cell.r, cell.c, pv.value);
         }
       }
-      this.paintValue = null;
-      this.previewTrail = null;
-      this.previewValue = null;
-      this.dragStart = null;
-      this.dragCurrent = null;
-      this.dragAxis = null;
+      this.paintValue = null; this.previewTrail = null; this.previewValue = null;
+      this.dragStart = null; this.dragCurrent = null; this.dragAxis = null;
       this.dragMovedAway = false;
       this.highlightCell = null;
       this.autoMarkSolvedLines();
@@ -866,8 +724,6 @@ class NonogramGame {
     };
     canvas.addEventListener("pointerup", stop);
     canvas.addEventListener("pointercancel", stop);
-    canvas.addEventListener("pointerleave", () => {
-      if (!this.painting) { this.highlightCell = null; this.render(); }
-    });
+    canvas.addEventListener("pointerleave", () => { if (!this.painting) { this.highlightCell = null; this.render(); } });
   }
 }

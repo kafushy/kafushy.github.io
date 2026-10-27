@@ -4,13 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Nonogram</title>
-  <link rel="stylesheet" href="./style.css?v=12">
+  <link rel="stylesheet" href="./style.css?v=13">
   <script>
     window.addEventListener("error", e => {
       const pre = document.createElement("pre");
       pre.style.cssText = "background:#7f1d1d;color:#fff;padding:0.6rem;font-size:0.75rem;white-space:pre-wrap;margin:0;position:relative;z-index:9999;";
-      pre.textContent = "SCRIPT ERROR:\n" + (e.message || "unknown") +
-        "\n" + (e.filename || "") + ":" + (e.lineno || "?");
+      pre.textContent = "SCRIPT ERROR:\n" + (e.message || "unknown") + "\n" + (e.filename || "") + ":" + (e.lineno || "?");
       document.body.insertBefore(pre, document.body.firstChild);
     });
   </script>
@@ -166,8 +165,8 @@
 <div id="ghost" class="hidden">×</div>
 <div id="status" class="hidden"></div>
 
-<script src="./format.js?v=12"></script>
-<script src="./game.js?v=12"></script>
-<script src="./app.js?v=12"></script>
+<script src="./format.js?v=13"></script>
+<script src="./game.js?v=13"></script>
+<script src="./app.js?v=13"></script>
 </body>
 </html>
