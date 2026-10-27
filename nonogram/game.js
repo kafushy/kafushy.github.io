@@ -1,4 +1,4 @@
-// nonogram/game.js — NonogramGame class (grid rendering + state + settings-aware)
+// nonogram/game.js
 
 class NonogramGame {
   constructor(puzzle, canvas, settings, statusEl) {
@@ -31,9 +31,9 @@ class NonogramGame {
     this._checkingWin = false;
     this.onStateChange = null;
 
-    // gamepad
     this.gamepadEnabled = false;
     this.cursor = null;
+    this.onGamepadTap = null;
 
     this.resize();
     this.render();
@@ -80,7 +80,7 @@ class NonogramGame {
 
   notifyChange() { if (this.onStateChange) this.onStateChange(); }
 
-  // ---------- gamepad ----------
+  // ---- gamepad ----
   setGamepadEnabled(enabled) {
     this.gamepadEnabled = enabled;
     if (enabled && !this.cursor) {
@@ -92,8 +92,17 @@ class NonogramGame {
   moveCursor(dr, dc) {
     if (!this.gamepadEnabled) return;
     if (!this.cursor) this.cursor = { r: 0, c: 0 };
-    this.cursor.r = Math.max(0, Math.min(this.N - 1, this.cursor.r + dr));
-    this.cursor.c = Math.max(0, Math.min(this.M - 1, this.cursor.c + dc));
+    let nr = this.cursor.r + dr;
+    let nc = this.cursor.c + dc;
+    if (this.settings.cursorWrap) {
+      nr = (nr + this.N) % this.N;
+      nc = (nc + this.M) % this.M;
+    } else {
+      nr = Math.max(0, Math.min(this.N - 1, nr));
+      nc = Math.max(0, Math.min(this.M - 1, nc));
+    }
+    this.cursor.r = nr;
+    this.cursor.c = nc;
     this.render();
   }
 
@@ -105,14 +114,32 @@ class NonogramGame {
       this.setCell(r, c, v);
     } else if (type === "mark") {
       this.setMark(r, c, !this.marks[r][c]);
-    } else if (type === "erase") {
-      this.eraseCell(r, c);
     }
     this.autoMarkSolvedLines();
     this.render();
   }
 
-  // ---------- sizing ----------
+  computeCursorColor() {
+    if (!this.settings.cursorColorAuto) {
+      return this.settings.cursorColorValue || "#fbbf24";
+    }
+    if (!this.cursor) return "#fbbf24";
+    const v = this.state[this.cursor.r][this.cursor.c];
+    if (v === 0) return "#fbbf24";
+    const fgHex = this.puzzle.fg.palette[v - 1] || "#fbbf24";
+    return this.invertColor(fgHex);
+  }
+
+  invertColor(hex) {
+    hex = hex.replace("#", "");
+    if (hex.length === 3) hex = hex.split("").map(c => c + c).join("");
+    const r = 255 - parseInt(hex.slice(0, 2), 16);
+    const g = 255 - parseInt(hex.slice(2, 4), 16);
+    const b = 255 - parseInt(hex.slice(4, 6), 16);
+    return "#" + [r, g, b].map(v => v.toString(16).padStart(2, "0")).join("");
+  }
+
+  // ---- sizing ----
   resize() {
     const wrap = this.canvas.parentElement;
     const availW = (wrap?.clientWidth || window.innerWidth) - 16;
@@ -147,7 +174,7 @@ class NonogramGame {
     return { r, c };
   }
 
-  // ---------- render ----------
+  // ---- render ----
   render() {
     this.ctx.clearRect(0, 0, this.logicalW, this.logicalH);
     this.drawBackground();
@@ -282,12 +309,15 @@ class NonogramGame {
     const { r, c } = this.cursor;
     const { x, y } = this.cellToPixel(r, c);
     const cs = this.cellSize;
-    this.ctx.strokeStyle = "#fbbf24";
+    const color = this.computeCursorColor();
+    this.ctx.strokeStyle = color;
     this.ctx.lineWidth = 3;
     this.ctx.strokeRect(x + 1.5, y + 1.5, cs - 3, cs - 3);
-    this.ctx.strokeStyle = "rgba(251, 191, 36, 0.35)";
+    this.ctx.globalAlpha = 0.35;
+    this.ctx.strokeStyle = color;
     this.ctx.lineWidth = 1;
     this.ctx.strokeRect(x + 5.5, y + 5.5, cs - 11, cs - 11);
+    this.ctx.globalAlpha = 1;
   }
 
   drawDragCounter() {
@@ -315,7 +345,7 @@ class NonogramGame {
     }
   }
 
-  // ---------- logic ----------
+  // ---- logic ----
   extractRuns(cells) {
     const runs = []; let cur = null;
     for (let i = 0; i < cells.length; i++) {
@@ -418,7 +448,7 @@ class NonogramGame {
     return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,"0")).join("");
   }
 
-  // ---------- mutation ----------
+  // ---- mutation ----
   setCell(r, c, val) {
     if (this.state[r][c] === val) return;
     if (val > 0 && this.marks[r][c] && this.settings.marksBlockFill) return;
@@ -437,14 +467,6 @@ class NonogramGame {
     this.state[r][c] = 0; this.marks[r][c] = false;
     this.notifyChange();
   }
-  eraseAt(clientX, clientY) {
-    if (this.won) return;
-    const rect = this.canvas.getBoundingClientRect();
-    const cell = this.pixelToCell(clientX - rect.left, clientY - rect.top);
-    if (!cell) return;
-    this.eraseCell(cell.r, cell.c);
-    this.render();
-  }
 
   reset() {
     for (let r = 0; r < this.N; r++) for (let c = 0; c < this.M; c++) {
@@ -456,7 +478,7 @@ class NonogramGame {
     this.render();
   }
 
-  // ---------- pointer events ----------
+  // ---- pointer events ----
   setupPointerEvents() {
     const canvas = this.canvas;
     const getCell = e => {
@@ -466,6 +488,10 @@ class NonogramGame {
     canvas.addEventListener("contextmenu", e => e.preventDefault());
 
     canvas.addEventListener("pointerdown", e => {
+      if (this.gamepadEnabled) {
+        if (this.onGamepadTap) this.onGamepadTap();
+        return;
+      }
       if (this.won) return;
       this.painting = true;
       const cell = getCell(e);
