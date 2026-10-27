@@ -1,4 +1,4 @@
-// nonogram/app.js — shell, options panel, tool button gestures, settings, gamepad
+// nonogram/app.js
 
 const DEFAULT_PUZZLE_TEXT = `
 kafushy, Heart, 2026-10-26, v1
@@ -16,7 +16,12 @@ const DEFAULT_SETTINGS = {
   dragCounterThreshold: 0,
   markSymbol: "×",
   pageBgColor: "#0f172a",
-  gamepad: false,
+  gamepadScale: 1,
+  gamepadPosition: "bottom-left",
+  gamepadColor: "#1e293b",
+  cursorColorAuto: true,
+  cursorColorValue: "#fbbf24",
+  cursorWrap: false,
 };
 
 const MARK_OPTIONS = ["×", "•", "/", "-", "+", "●", "○"];
@@ -32,14 +37,12 @@ function loadSettings() {
 function saveSettings(s) {
   try { localStorage.setItem("nono_settings", JSON.stringify(s)); } catch {}
 }
-
 function loadPuzzleText() {
   return localStorage.getItem("nono_puzzleText") || DEFAULT_PUZZLE_TEXT;
 }
 function savePuzzleText(t) {
   try { localStorage.setItem("nono_puzzleText", t); } catch {}
 }
-
 function loadSavedState(puzzleText) {
   try {
     const raw = localStorage.getItem("nono_state");
@@ -67,37 +70,36 @@ function clearSavedState() {
 let currentGame = null;
 let currentPuzzleText = loadPuzzleText();
 let settings = loadSettings();
+let gamepadVisible = false;
 
 document.documentElement.style.setProperty("--bg", settings.pageBgColor || "#0f172a");
 
-let gameWrap, toolBtn, toolLabel, statusEl, ghostEl, gamepadEl;
+let gameWrap, toolBtn, toolSymbol, statusEl, gamepadEl, gamepadInner;
 
 // ---- boot ----
 document.addEventListener("DOMContentLoaded", () => {
   gameWrap = document.getElementById("game-wrap");
   toolBtn = document.getElementById("tool-btn");
-  toolLabel = document.getElementById("tool-label");
+  toolSymbol = document.getElementById("tool-symbol");
   statusEl = document.getElementById("status");
-  ghostEl = document.getElementById("ghost");
   gamepadEl = document.getElementById("gamepad");
+  gamepadInner = document.getElementById("gamepad-inner");
 
   wireHeader();
   wireTabs();
   wireSettingsControls();
   wireToolButton();
   wireGamepad();
+  applyGamepadStyle();
   loadPuzzle(currentPuzzleText, loadSavedState(currentPuzzleText));
 });
 
-// ---- header ----
 function wireHeader() {
   document.getElementById("header").addEventListener("click", () => {
-    const opts = document.getElementById("options");
-    opts.classList.toggle("hidden");
+    document.getElementById("options").classList.toggle("hidden");
   });
 }
 
-// ---- tabs ----
 function wireTabs() {
   document.querySelectorAll(".tabs button").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -112,13 +114,14 @@ function wireTabs() {
 
 // ---- settings ----
 function wireSettingsControls() {
-  const bindToggle = (id, key) => {
+  const bindToggle = (id, key, after) => {
     const el = document.getElementById(id);
     el.checked = !!settings[key];
     el.addEventListener("change", () => {
       settings[key] = el.checked;
       saveSettings(settings);
       if (currentGame) currentGame.setSettings(settings);
+      if (after) after();
     });
   };
   const bindNumber = (id, key, min, max) => {
@@ -154,6 +157,8 @@ function wireSettingsControls() {
     settings.markSymbol = markSel.value;
     saveSettings(settings);
     if (currentGame) currentGame.setSettings(settings);
+    updateToolSymbol();
+    updateGamepadButtons();
   });
 
   const pageBg = document.getElementById("set-pageBgColor");
@@ -164,12 +169,49 @@ function wireSettingsControls() {
     saveSettings(settings);
   });
 
-  const gp = document.getElementById("set-gamepad");
-  gp.checked = !!settings.gamepad;
-  gp.addEventListener("change", () => {
-    settings.gamepad = gp.checked;
+  // Gamepad
+  const scaleEl = document.getElementById("set-gamepadScale");
+  scaleEl.value = settings.gamepadScale;
+  scaleEl.addEventListener("input", () => {
+    settings.gamepadScale = parseFloat(scaleEl.value);
     saveSettings(settings);
-    updateGamepadVisibility();
+    applyGamepadStyle();
+  });
+
+  const posEl = document.getElementById("set-gamepadPosition");
+  posEl.value = settings.gamepadPosition;
+  posEl.addEventListener("change", () => {
+    settings.gamepadPosition = posEl.value;
+    saveSettings(settings);
+    applyGamepadStyle();
+  });
+
+  const gpColor = document.getElementById("set-gamepadColor");
+  gpColor.value = settings.gamepadColor;
+  gpColor.addEventListener("input", () => {
+    settings.gamepadColor = gpColor.value;
+    saveSettings(settings);
+    applyGamepadStyle();
+  });
+
+  bindToggle("set-cursorWrap", "cursorWrap");
+
+  const cursorAuto = document.getElementById("set-cursorColorAuto");
+  const cursorFixedRow = document.getElementById("cursorColorFixedRow");
+  const cursorValue = document.getElementById("set-cursorColorValue");
+  cursorAuto.checked = !!settings.cursorColorAuto;
+  cursorValue.value = settings.cursorColorValue || "#fbbf24";
+  cursorFixedRow.style.display = settings.cursorColorAuto ? "none" : "flex";
+  cursorAuto.addEventListener("change", () => {
+    settings.cursorColorAuto = cursorAuto.checked;
+    cursorFixedRow.style.display = settings.cursorColorAuto ? "none" : "flex";
+    saveSettings(settings);
+    if (currentGame) currentGame.render();
+  });
+  cursorValue.addEventListener("input", () => {
+    settings.cursorColorValue = cursorValue.value;
+    saveSettings(settings);
+    if (currentGame) currentGame.render();
   });
 }
 
@@ -225,15 +267,17 @@ function loadPuzzle(text, savedState) {
       currentGame.render();
     }
     currentGame.onStateChange = () => persistState();
+    currentGame.onGamepadTap = () => disableGamepad();
     currentGame.setupPointerEvents();
-    currentGame.setGamepadEnabled(!!settings.gamepad);
+    currentGame.setGamepadEnabled(gamepadVisible);
   } catch (e) { showStatus("Error: " + e.message, true); return; }
 
   currentPuzzleText = text;
   savePuzzleText(text);
   renderInfo(puzzle);
+  updateToolSymbol();
+  updateGamepadButtons();
   showStatus("");
-  updateGamepadVisibility();
 }
 
 function showStatus(msg, isError) {
@@ -243,13 +287,45 @@ function showStatus(msg, isError) {
   statusEl.classList.toggle("error", !!isError);
 }
 
-// ---- gamepad visibility ----
-function updateGamepadVisibility() {
-  if (!gamepadEl) return;
-  const on = !!settings.gamepad;
-  gamepadEl.classList.toggle("hidden", !on);
-  toolBtn.classList.toggle("hidden", on);
-  if (currentGame) currentGame.setGamepadEnabled(on);
+// ---- gamepad show/hide ----
+function enableGamepad() {
+  gamepadVisible = true;
+  toolBtn.classList.add("hidden");
+  gamepadEl.classList.remove("hidden");
+  if (currentGame) currentGame.setGamepadEnabled(true);
+}
+function disableGamepad() {
+  gamepadVisible = false;
+  toolBtn.classList.remove("hidden");
+  gamepadEl.classList.add("hidden");
+  if (currentGame) currentGame.setGamepadEnabled(false);
+  updateToolSymbol();
+}
+
+function applyGamepadStyle() {
+  // Position class
+  gamepadEl.classList.remove("pos-bl", "pos-br", "pos-tl", "pos-tr");
+  gamepadEl.classList.add("pos-" + (settings.gamepadPosition || "bottom-left").split("-").map(w => w[0]).join(""));
+  // Scale + color via CSS vars
+  gamepadEl.style.setProperty("--gp-scale", settings.gamepadScale || 1);
+  gamepadEl.style.setProperty("--gp-color", settings.gamepadColor || "#1e293b");
+}
+
+function updateToolSymbol() {
+  if (!currentGame || !toolSymbol) return;
+  toolSymbol.textContent = currentGame.tool === "mark" ? settings.markSymbol : "";
+}
+
+function updateGamepadButtons() {
+  if (!currentGame) return;
+  const markBtn = document.getElementById("gp-mark");
+  const fillBtn = document.getElementById("gp-fill");
+  if (markBtn) markBtn.textContent = settings.markSymbol;
+  if (fillBtn) {
+    const fg = currentGame.puzzle.fg.palette;
+    const color = fg[0] || "#ef4444";
+    gamepadEl.style.setProperty("--gp-fg", color);
+  }
 }
 
 // ---- gamepad wiring ----
@@ -261,7 +337,6 @@ function wireGamepad() {
   document.querySelectorAll(".dpad-btn[data-dir]").forEach(btn => {
     const dir = moves[btn.dataset.dir];
     if (!dir) return;
-
     let initialTimer = null, repeatTimer = null;
 
     const start = e => {
@@ -298,23 +373,17 @@ function wireGamepad() {
 function wireToolButton() {
   let gesture = {
     active: false, startX: 0, startY: 0,
-    moved: false, dragMode: false, resetFired: false,
+    moved: false, resetFired: false,
     resetTimer: null,
   };
-
-  const updateToolLabel = () => {
-    if (!currentGame) return;
-    toolLabel.textContent = currentGame.tool === "mark"
-      ? `Mark ${settings.markSymbol}`
-      : "Fill";
-  };
-  updateToolLabel();
 
   toolBtn.addEventListener("pointerdown", e => {
     e.preventDefault();
     gesture.active = true;
-    gesture.startX = e.clientX; gesture.startY = e.clientY;
-    gesture.moved = false; gesture.dragMode = false; gesture.resetFired = false;
+    gesture.startX = e.clientX;
+    gesture.startY = e.clientY;
+    gesture.moved = false;
+    gesture.resetFired = false;
     toolBtn.classList.add("held");
 
     gesture.resetTimer = setTimeout(() => {
@@ -332,25 +401,13 @@ function wireToolButton() {
   });
 
   toolBtn.addEventListener("pointermove", e => {
-    if (!gesture.active) return;
-    const dx = e.clientX - gesture.startX;
-    const dy = e.clientY - gesture.startY;
-    const dist = Math.hypot(dx, dy);
-
+    if (!gesture.active || gesture.resetFired) return;
+    const dist = Math.hypot(e.clientX - gesture.startX, e.clientY - gesture.startY);
     if (!gesture.moved && dist > 10) {
       gesture.moved = true;
       clearTimeout(gesture.resetTimer);
-      gesture.dragMode = true;
       toolBtn.classList.remove("held");
-      toolBtn.classList.add("dragging");
-      ghostEl.classList.remove("hidden");
-    }
-
-    if (gesture.dragMode && !gesture.resetFired) {
-      ghostEl.style.left = e.clientX + "px";
-      ghostEl.style.top = e.clientY + "px";
-      ghostEl.textContent = "×";
-      if (currentGame) currentGame.eraseAt(e.clientX, e.clientY);
+      enableGamepad();
     }
   });
 
@@ -361,13 +418,11 @@ function wireToolButton() {
 
     if (!gesture.moved && !gesture.resetFired && currentGame) {
       currentGame.setTool(currentGame.tool === "fill" ? "mark" : "fill");
-      updateToolLabel();
+      updateToolSymbol();
     }
 
     gesture.active = false;
-    gesture.dragMode = false;
-    toolBtn.classList.remove("dragging");
-    ghostEl.classList.add("hidden");
+    gesture.moved = false;
   };
 
   toolBtn.addEventListener("pointerup", end);
