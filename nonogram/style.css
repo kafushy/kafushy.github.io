@@ -169,14 +169,35 @@ canvas { display: block; touch-action: none; }
   background: var(--bg);
   opacity: 0.5;
 }
-#tool-btn .hint {
+#tool-btn.hint {
   display: block;
   font-size: 0.65rem;
   color: var(--dim);
   font-weight: 400;
   margin-top: 0.15rem;
 }
+#tool-btn.held {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+#tool-btn.flash {
+  animation: tool-flash 0.5s ease-out;
+}
+@keyframes tool-flash {
+  0%   { background: #4ade80; border-color: #4ade80; color: #0f172a; }
+  100% { background: var(--danger); border-color: var(--danger); color: #fff; }
+}
 
+.setting input[type=color] {
+  width: 44px;
+  height: 28px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px;
+  cursor: pointer;
+}
 /* ---- Ghost (finger-follower during drag-to-erase) ---- */
 #ghost {
   position: fixed;
