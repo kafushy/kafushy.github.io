@@ -158,12 +158,6 @@ function wireSettingsControls() {
     saveSettings(settings);
     // no-op for now
   });
-
-  // Reset button
-  document.getElementById("reset-puzzle").addEventListener("click", () => {
-    if (currentGame) currentGame.reset();
-    clearSavedState();
-  });
 }
 
 // ---- info section ----
