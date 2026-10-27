@@ -6,6 +6,10 @@
   --dim: #94a3b8;
   --accent: #38bdf8;
   --danger: #f87171;
+  --gp-color: #1e293b;
+  --gp-fg: #ef4444;
+  --gp-scale: 1;
+  --gp-origin: bottom left;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body {
@@ -98,6 +102,18 @@ body {
   padding: 0.25rem 0.5rem;
   font-size: 0.85rem;
 }
+.setting input[type=range] {
+  width: 120px;
+  accent-color: var(--accent);
+}
+.setting input[type=color] {
+  width: 44px; height: 28px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px;
+  cursor: pointer;
+}
 .setting select {
   background: var(--bg);
   color: var(--text);
@@ -148,33 +164,33 @@ body {
 }
 canvas { display: block; touch-action: none; }
 
-/* ---- Tool button ---- */
+/* ---- Tool button (tapbox) ---- */
 #tool-btn {
   flex-shrink: 0;
-  margin: 0 1rem 1rem;
-  padding: 0.9rem;
+  align-self: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  margin: 0.5rem auto 1rem;
   background: var(--panel);
   color: var(--text);
   border: 2px solid var(--border);
-  border-radius: 12px;
-  font-size: 1rem;
-  font-family: inherit;
-  font-weight: 600;
   cursor: pointer;
   touch-action: none;
-  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 1.6rem;
+  font-family: inherit;
+  font-weight: 600;
+  transition: opacity 0.2s ease, transform 0.2s ease,
+              background 0.15s, border-color 0.15s, color 0.15s;
 }
-#tool-btn.dragging {
-  border-color: var(--accent);
-  background: var(--bg);
-  opacity: 0.5;
-}
-#tool-btn.hint {
-  display: block;
-  font-size: 0.65rem;
-  color: var(--dim);
-  font-weight: 400;
-  margin-top: 0.15rem;
+#tool-btn.hidden {
+  opacity: 0;
+  transform: translateY(20px);
+  pointer-events: none;
 }
 #tool-btn.held {
   background: var(--danger);
@@ -189,16 +205,79 @@ canvas { display: block; touch-action: none; }
   100% { background: var(--danger); border-color: var(--danger); color: #fff; }
 }
 
-.setting input[type=color] {
-  width: 44px;
-  height: 28px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 2px;
-  cursor: pointer;
+/* ---- Gamepad ---- */
+#gamepad {
+  position: fixed;
+  z-index: 50;
+  transition: opacity 0.2s ease;
 }
-/* ---- Ghost (finger-follower during drag-to-erase) ---- */
+#gamepad.hidden { opacity: 0; pointer-events: none; }
+#gamepad.pos-bl { bottom: 1rem; left: 1rem; --gp-origin: bottom left; }
+#gamepad.pos-br { bottom: 1rem; right: 1rem; --gp-origin: bottom right; }
+#gamepad.pos-tl { top: 4rem; left: 1rem; --gp-origin: top left; }
+#gamepad.pos-tr { top: 4rem; right: 1rem; --gp-origin: top right; }
+
+#gamepad-inner {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  transform: scale(var(--gp-scale, 1));
+  transform-origin: var(--gp-origin, bottom left);
+}
+
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 44px);
+  grid-template-rows: repeat(3, 44px);
+  gap: 4px;
+}
+.dpad-btn {
+  background: var(--gp-color);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 1rem;
+  cursor: pointer;
+  font-family: inherit;
+  touch-action: none;
+  user-select: none; -webkit-user-select: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.dpad-btn:active { filter: brightness(1.4); }
+.dpad-btn.up    { grid-area: 1 / 2; }
+.dpad-btn.left  { grid-area: 2 / 1; }
+.dpad-btn.right { grid-area: 2 / 3; }
+.dpad-btn.down  { grid-area: 3 / 2; }
+
+.actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.act-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--gp-color);
+  color: var(--text);
+  border: 2px solid rgba(255,255,255,0.15);
+  font-size: 1.2rem;
+  font-family: inherit;
+  cursor: pointer;
+  font-weight: 700;
+  touch-action: none;
+  user-select: none; -webkit-user-select: none;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+}
+.act-btn:active { filter: brightness(1.4); }
+#gp-fill {
+  background: var(--gp-fg);
+  border-color: var(--gp-fg);
+  color: rgba(0,0,0,0.6);
+}
+
+/* ---- Ghost / Status / Back ---- */
 #ghost {
   position: fixed;
   width: 44px; height: 44px;
@@ -215,10 +294,9 @@ canvas { display: block; touch-action: none; }
 }
 #ghost.hidden { display: none; }
 
-/* ---- Status ---- */
 #status {
   position: fixed;
-  bottom: 6.5rem;
+  bottom: 1.25rem;
   left: 50%;
   transform: translateX(-50%);
   background: var(--panel);
@@ -233,11 +311,6 @@ canvas { display: block; touch-action: none; }
 #status.hidden { display: none; }
 #status.error { color: #fecaca; background: #7f1d1d; }
 
-@media (min-width: 600px) {
-  #tool-btn { margin: 0 2rem 1rem; }
-  #header .title { font-size: 1.5rem; }
-}
-
 .back-link {
   position: fixed; top: 0.5rem; left: 0.5rem;
   color: var(--dim); text-decoration: none;
@@ -246,66 +319,6 @@ canvas { display: block; touch-action: none; }
 }
 .back-link:hover { color: var(--text); background: var(--panel); }
 
-/* ---- Virtual gamepad ---- */
-#gamepad {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1rem 1rem;
-  gap: 1rem;
+@media (min-width: 600px) {
+  #header .title { font-size: 1.5rem; }
 }
-#gamepad.hidden { display: none; }
-
-.dpad {
-  display: grid;
-  grid-template-columns: repeat(3, 48px);
-  grid-template-rows: repeat(3, 48px);
-  gap: 4px;
-}
-.dpad-btn {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text);
-  font-size: 1rem;
-  cursor: pointer;
-  font-family: inherit;
-  touch-action: none;
-  user-select: none; -webkit-user-select: none;
-  display: flex; align-items: center; justify-content: center;
-}
-.dpad-btn:active { background: var(--accent); color: var(--bg); }
-.dpad-btn.up { grid-area: 1 / 2; }
-.dpad-btn.left { grid-area: 2 / 1; }
-.dpad-btn.center {
-  grid-area: 2 / 2;
-  background: transparent;
-  border: none;
-  pointer-events: none;
-  color: var(--dim);
-  font-size: 0.7rem;
-}
-.dpad-btn.right { grid-area: 2 / 3; }
-.dpad-btn.down { grid-area: 3 / 2; }
-
-.actions {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.act-btn {
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.55rem 1rem;
-  font-size: 0.85rem;
-  font-family: inherit;
-  cursor: pointer;
-  font-weight: 600;
-  min-width: 84px;
-  touch-action: none;
-  user-select: none; -webkit-user-select: none;
-}
-.act-btn:active { background: var(--accent); color: var(--bg); }
