@@ -183,38 +183,44 @@ class NonogramGame {
     ctx.strokeRect(x0, y0, this.M*cs, this.N*cs);
   }
 
-  drawClues() {
-    if (!this.settings.autoGray) return;
-    const ctx = this.ctx, cs = this.cellSize, fg = this.puzzle.fg.palette;
-    ctx.font = `${Math.max(10, Math.floor(cs * 0.42))}px system-ui, sans-serif`;
-    ctx.textBaseline = "middle"; ctx.textAlign = "center";
-    const surrounded = this.settings.surroundedOnly;
+drawClues() {
+  const ctx = this.ctx, cs = this.cellSize, fg = this.puzzle.fg.palette;
+  ctx.font = `${Math.max(10, Math.floor(cs * 0.42))}px system-ui, sans-serif`;
+  ctx.textBaseline = "middle"; ctx.textAlign = "center";
+  const surrounded = this.settings.surroundedOnly;
+  const autoGray = this.settings.autoGray;
 
-    for (let r = 0; r < this.N; r++) {
-      const clues = this.rows[r].clues;
-      const matched = this.matchClues(this.state[r], this.marks[r], clues, surrounded);
-      const { y } = this.cellToPixel(r, 0);
-      for (let i = clues.length-1, k = 0; i >= 0; i--, k++) {
-        const clue = clues[i];
-        const cx = this.marginLeft - (k + 0.5) * cs * 0.7 - 4;
-        ctx.fillStyle = matched[i] ? "#475569" : (fg[clue.color-1] || "#e2e8f0");
-        ctx.fillText(String(clue.value), cx, y + cs/2);
-      }
-    }
-    for (let c = 0; c < this.M; c++) {
-      const col = this.state.map(row => row[c]);
-      const colMarks = this.marks.map(row => row[c]);
-      const clues = this.cols[c].clues;
-      const matched = this.matchClues(col, colMarks, clues, surrounded);
-      const { x } = this.cellToPixel(0, c);
-      for (let i = clues.length-1, k = 0; i >= 0; i--, k++) {
-        const clue = clues[i];
-        const cy = this.marginTop - (k + 0.5) * cs * 0.7 - 4;
-        ctx.fillStyle = matched[i] ? "#475569" : (fg[clue.color-1] || "#e2e8f0");
-        ctx.fillText(String(clue.value), x + cs/2, cy);
-      }
+  for (let r = 0; r < this.N; r++) {
+    const clues = this.rows[r].clues;
+    const matched = autoGray
+      ? this.matchClues(this.state[r], this.marks[r], clues, surrounded)
+      : null;
+    const { y } = this.cellToPixel(r, 0);
+    for (let i = clues.length-1, k = 0; i >= 0; i--, k++) {
+      const clue = clues[i];
+      const cx = this.marginLeft - (k + 0.5) * cs * 0.7 - 4;
+      const gray = matched ? matched[i] : false;
+      ctx.fillStyle = gray ? "#475569" : (fg[clue.color-1] || "#e2e8f0");
+      ctx.fillText(String(clue.value), cx, y + cs/2);
     }
   }
+  for (let c = 0; c < this.M; c++) {
+    const col = this.state.map(row => row[c]);
+    const colMarks = this.marks.map(row => row[c]);
+    const clues = this.cols[c].clues;
+    const matched = autoGray
+      ? this.matchClues(col, colMarks, clues, surrounded)
+      : null;
+    const { x } = this.cellToPixel(0, c);
+    for (let i = clues.length-1, k = 0; i >= 0; i--, k++) {
+      const clue = clues[i];
+      const cy = this.marginTop - (k + 0.5) * cs * 0.7 - 4;
+      const gray = matched ? matched[i] : false;
+      ctx.fillStyle = gray ? "#475569" : (fg[clue.color-1] || "#e2e8f0");
+      ctx.fillText(String(clue.value), x + cs/2, cy);
+    }
+  }
+}
 
   drawDragCounter() {
     const threshold = this.settings.dragCounterThreshold;
@@ -346,11 +352,12 @@ class NonogramGame {
 
   // ---------- mutation ----------
   setCell(r, c, val) {
-    if (this.state[r][c] === val) return;
-    this.state[r][c] = val;
-    if (val > 0) this.marks[r][c] = false;
-    this.notifyChange();
-  }
+  if (this.state[r][c] === val) return;
+  if (val > 0 && this.marks[r][c] && this.settings.marksBlockFill) return;
+  this.state[r][c] = val;
+  if (val > 0) this.marks[r][c] = false;
+  this.notifyChange();
+}
   setMark(r, c, val) {
     if (this.marks[r][c] === val) return;
     this.marks[r][c] = val;
