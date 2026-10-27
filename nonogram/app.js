@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS = {
   markSymbol: "×",
   pageBgColor: "#0f172a",
   highlight: true,
+  cluePos: "top-left",
   gamepadScale: 1,
   gamepadPosition: "bottom-left",
   gamepadColor: "#1e293b",
@@ -35,15 +36,9 @@ function loadSettings() {
     return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
   } catch { return { ...DEFAULT_SETTINGS }; }
 }
-function saveSettings(s) {
-  try { localStorage.setItem("nono_settings", JSON.stringify(s)); } catch {}
-}
-function loadPuzzleText() {
-  return localStorage.getItem("nono_puzzleText") || DEFAULT_PUZZLE_TEXT;
-}
-function savePuzzleText(t) {
-  try { localStorage.setItem("nono_puzzleText", t); } catch {}
-}
+function saveSettings(s) { try { localStorage.setItem("nono_settings", JSON.stringify(s)); } catch {} }
+function loadPuzzleText() { return localStorage.getItem("nono_puzzleText") || DEFAULT_PUZZLE_TEXT; }
+function savePuzzleText(t) { try { localStorage.setItem("nono_puzzleText", t); } catch {} }
 function loadSavedState(puzzleText) {
   try {
     const raw = localStorage.getItem("nono_state");
@@ -63,9 +58,7 @@ function persistState() {
     }));
   } catch {}
 }
-function clearSavedState() {
-  try { localStorage.removeItem("nono_state"); } catch {}
-}
+function clearSavedState() { try { localStorage.removeItem("nono_state"); } catch {} }
 
 let currentGame = null;
 let currentPuzzleText = loadPuzzleText();
@@ -74,7 +67,7 @@ let gamepadVisible = false;
 
 document.documentElement.style.setProperty("--bg", settings.pageBgColor || "#0f172a");
 
-let gameWrap, toolBtn, toolSymbol, statusEl, gamepadEl, gamepadInner;
+let gameWrap, toolBtn, toolSymbol, statusEl, gamepadEl;
 
 document.addEventListener("DOMContentLoaded", () => {
   gameWrap = document.getElementById("game-wrap");
@@ -82,7 +75,6 @@ document.addEventListener("DOMContentLoaded", () => {
   toolSymbol = document.getElementById("tool-symbol");
   statusEl = document.getElementById("status");
   gamepadEl = document.getElementById("gamepad");
-  gamepadInner = document.getElementById("gamepad-inner");
 
   wireHeader();
   wireTabs();
@@ -106,10 +98,7 @@ function wireTabs() {
       const tab = btn.dataset.tab;
       const wasActive = btn.classList.contains("active");
       const optionsEl = document.getElementById("options");
-      if (wasActive) {
-        optionsEl.classList.add("hidden");
-        return;
-      }
+      if (wasActive) { optionsEl.classList.add("hidden"); return; }
       document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b === btn));
       document.querySelectorAll(".tab-content").forEach(tc => {
         tc.classList.toggle("hidden", tc.id !== "tab-" + tab);
@@ -181,6 +170,14 @@ function wireSettingsControls() {
     saveSettings(settings);
   });
 
+  const cluePos = document.getElementById("set-cluePos");
+  cluePos.value = settings.cluePos || "top-left";
+  cluePos.addEventListener("change", () => {
+    settings.cluePos = cluePos.value;
+    saveSettings(settings);
+    if (currentGame) currentGame.setSettings(settings);
+  });
+
   const scaleEl = document.getElementById("set-gamepadScale");
   scaleEl.value = settings.gamepadScale;
   scaleEl.addEventListener("input", () => {
@@ -230,8 +227,7 @@ function renderInfo(puzzle) {
   const el = document.getElementById("tab-settings-info");
   if (!el || !puzzle) return;
   const strict = puzzle.strict ? "yes" : "no";
-  const palette = puzzle.fg.palette.map(c =>
-    `<div style="background:${c}"></div>`).join("");
+  const palette = puzzle.fg.palette.map(c => `<div style="background:${c}"></div>`).join("");
   el.innerHTML = `
     <h3>Info</h3>
     <div class="info-row"><span>Author</span><span>${esc(puzzle.author)}</span></div>
@@ -319,7 +315,18 @@ function applyGamepadStyle() {
 
 function updateToolSymbol() {
   if (!currentGame || !toolSymbol) return;
-  toolSymbol.textContent = currentGame.tool === "mark" ? settings.markSymbol : "";
+  if (currentGame.tool === "mark") {
+    toolSymbol.textContent = settings.markSymbol;
+    toolBtn.style.background = "";
+    toolBtn.style.borderColor = "";
+    toolBtn.style.color = "";
+  } else {
+    toolSymbol.textContent = "";
+    const fillColor = currentGame.puzzle.fg.palette[0] || "#ef4444";
+    toolBtn.style.background = fillColor;
+    toolBtn.style.borderColor = fillColor;
+    toolBtn.style.color = "transparent";
+  }
 }
 
 function updateGamepadButtons() {
@@ -329,36 +336,25 @@ function updateGamepadButtons() {
   if (markBtn) markBtn.textContent = settings.markSymbol;
   if (fillBtn) {
     const fg = currentGame.puzzle.fg.palette;
-    const color = fg[0] || "#ef4444";
-    gamepadEl.style.setProperty("--gp-fg", color);
+    gamepadEl.style.setProperty("--gp-fg", fg[0] || "#ef4444");
   }
 }
 
 function wireGamepad() {
-  const moves = {
-    up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1],
-  };
-
+  const moves = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] };
   document.querySelectorAll(".dpad-btn[data-dir]").forEach(btn => {
     const dir = moves[btn.dataset.dir];
     if (!dir) return;
     let initialTimer = null, repeatTimer = null;
-
     const start = e => {
       e.preventDefault();
       if (!currentGame) return;
       currentGame.moveCursor(dir[0], dir[1]);
       initialTimer = setTimeout(() => {
-        repeatTimer = setInterval(() => {
-          if (currentGame) currentGame.moveCursor(dir[0], dir[1]);
-        }, 80);
+        repeatTimer = setInterval(() => { if (currentGame) currentGame.moveCursor(dir[0], dir[1]); }, 80);
       }, 300);
     };
-    const stop = () => {
-      clearTimeout(initialTimer);
-      clearInterval(repeatTimer);
-    };
-
+    const stop = () => { clearTimeout(initialTimer); clearInterval(repeatTimer); };
     btn.addEventListener("pointerdown", start);
     btn.addEventListener("pointerup", stop);
     btn.addEventListener("pointercancel", stop);
@@ -374,6 +370,7 @@ function wireGamepadAction(btn, action) {
   let painting = false;
   let paintValue = null;
   let paintedCells = new Set();
+  let onMove = null, onUp = null;
 
   const tryPaintAt = (clientX, clientY) => {
     if (!currentGame) return;
@@ -405,32 +402,31 @@ function wireGamepadAction(btn, action) {
     }
 
     tryPaintAt(e.clientX, e.clientY);
-    try { btn.setPointerCapture(e.pointerId); } catch {}
+
+    onMove = ev => { if (painting) tryPaintAt(ev.clientX, ev.clientY); };
+    onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+      if (!painting) return;
+      painting = false;
+      if (currentGame && paintedCells.size === 0 && currentGame.cursor) {
+        const { r, c } = currentGame.cursor;
+        if (paintValue.type === "state") currentGame.setCell(r, c, paintValue.value);
+        else if (paintValue.type === "mark") currentGame.setMark(r, c, paintValue.value);
+      }
+      if (currentGame) {
+        currentGame.autoMarkSolvedLines();
+        currentGame.render();
+      }
+      paintedCells.clear();
+      paintValue = null;
+    };
+
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
   });
-
-  btn.addEventListener("pointermove", e => {
-    if (!painting || !currentGame) return;
-    tryPaintAt(e.clientX, e.clientY);
-  });
-
-  const end = () => {
-    if (!painting) return;
-    painting = false;
-    if (currentGame && paintedCells.size === 0 && currentGame.cursor) {
-      const { r, c } = currentGame.cursor;
-      if (paintValue.type === "state") currentGame.setCell(r, c, paintValue.value);
-      else if (paintValue.type === "mark") currentGame.setMark(r, c, paintValue.value);
-    }
-    if (currentGame) {
-      currentGame.autoMarkSolvedLines();
-      currentGame.render();
-    }
-    paintedCells.clear();
-    paintValue = null;
-  };
-
-  btn.addEventListener("pointerup", end);
-  btn.addEventListener("pointercancel", end);
 }
 
 function wireToolButton() {
@@ -478,12 +474,10 @@ function wireToolButton() {
     if (!gesture.active) return;
     clearTimeout(gesture.resetTimer);
     toolBtn.classList.remove("held");
-
     if (!gesture.moved && !gesture.resetFired && currentGame) {
       currentGame.setTool(currentGame.tool === "fill" ? "mark" : "fill");
       updateToolSymbol();
     }
-
     gesture.active = false;
     gesture.moved = false;
   };
