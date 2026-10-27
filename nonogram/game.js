@@ -32,6 +32,7 @@ class NonogramGame {
     this.dragCurrent = null;
     this.dragAxis = null;
     this._checkingWin = false;
+    this._solvedRaf = null;
     this.onStateChange = null;
 
     this.gamepadEnabled = false;
@@ -46,14 +47,20 @@ class NonogramGame {
     this.resize();
     this.render();
 
-    this._lastWidth = window.innerWidth;
-    this._onResize = () => {
-      if (window.innerWidth === this._lastWidth) return;
-      this._lastWidth = window.innerWidth;
-      this.resize();
-      this.render();
-    };
-    window.addEventListener("resize", this._onResize);
+    // Robust resize: any change to the wrap size (viewport, app switch, orientation) triggers a redraw
+    this._resizePending = false;
+    this._resizeObserver = new ResizeObserver(() => {
+      if (this._resizePending) return;
+      this._resizePending = true;
+      requestAnimationFrame(() => {
+        this._resizePending = false;
+        this.resize();
+        this.render();
+      });
+    });
+    if (this.canvas.parentElement) {
+      this._resizeObserver.observe(this.canvas.parentElement);
+    }
 
     this._keyHandler = (e) => {
       if (!this.gamepadEnabled) return;
@@ -71,12 +78,13 @@ class NonogramGame {
   }
 
   destroy() {
-    window.removeEventListener("resize", this._onResize);
+    if (this._resizeObserver) this._resizeObserver.disconnect();
     window.removeEventListener("keydown", this._keyHandler);
+    if (this._solvedRaf) cancelAnimationFrame(this._solvedRaf);
   }
 
   setTool(t) { this.tool = t; }
-  setSettings(s) { this.settings = s; this.render(); }
+  setSettings(s) { this.settings = s; this.resize(); this.render(); }
 
   setStatus(text, isError) {
     if (!this.statusEl) return;
@@ -87,6 +95,15 @@ class NonogramGame {
   }
 
   notifyChange() { if (this.onStateChange) this.onStateChange(); }
+
+  // ---- clue sides ----
+  getClueSides() {
+    const pos = this.settings.cluePos || "top-left";
+    return {
+      row: pos.endsWith("left") ? "left" : "right",
+      col: pos.startsWith("top") ? "top" : "bottom",
+    };
+  }
 
   // ---- gamepad ----
   setGamepadEnabled(enabled) {
@@ -115,9 +132,7 @@ class NonogramGame {
   }
 
   computeCursorColor() {
-    if (!this.settings.cursorColorAuto) {
-      return this.settings.cursorColorValue || "#fbbf24";
-    }
+    if (!this.settings.cursorColorAuto) return this.settings.cursorColorValue || "#fbbf24";
     if (!this.cursor) return "#fbbf24";
     const v = this.state[this.cursor.r][this.cursor.c];
     if (v === 0) return "#fbbf24";
@@ -134,7 +149,7 @@ class NonogramGame {
     return "#" + [r, g, b].map(v => v.toString(16).padStart(2, "0")).join("");
   }
 
-  // ---- sizing ----
+  // ---- sizing (centered grid, symmetric pad) ----
   resize() {
     const wrap = this.canvas.parentElement;
     const availW = (wrap?.clientWidth || window.innerWidth) - 16;
@@ -145,11 +160,21 @@ class NonogramGame {
     let cs = Math.floor(Math.min(availW / totalWCells, availH / totalHCells));
     cs = Math.max(12, Math.min(56, cs));
     this.cellSize = cs;
-    this.marginLeft = Math.ceil(this.maxRowClues * cs * clueFactor) + 4;
-    this.marginTop = Math.ceil(this.maxColClues * cs * clueFactor) + 4;
-    const logicalW = this.marginLeft + this.M * cs + 4;
-    const logicalH = this.marginTop + this.N * cs + 4;
-    const dpr = window.devicePixelRatio || 1;
+
+    // Symmetric clue margins so grid is centered within canvas
+    this.padRow = Math.ceil(this.maxRowClues * cs * clueFactor) + 4;
+    this.padCol = Math.ceil(this.maxColClues * cs * clueFactor) + 4;
+    this.gridX = this.padRow;
+    this.gridY = this.padCol;
+    this.gridW = this.M * cs;
+    this.gridH = this.N * cs;
+
+    const logicalW = this.padRow * 2 + this.gridW;
+    const logicalH = this.padCol * 2 + this.gridH;
+
+    // Round DPR to integer so integer coords stay integer pixels (prevents seam gaps)
+    const dpr = Math.max(1, Math.round(window.devicePixelRatio || 1));
+
     this.canvas.width = logicalW * dpr;
     this.canvas.height = logicalH * dpr;
     this.canvas.style.width = logicalW + "px";
@@ -160,11 +185,11 @@ class NonogramGame {
   }
 
   cellToPixel(r, c) {
-    return { x: this.marginLeft + c * this.cellSize, y: this.marginTop + r * this.cellSize };
+    return { x: this.gridX + c * this.cellSize, y: this.gridY + r * this.cellSize };
   }
   pixelToCell(x, y) {
-    const c = Math.floor((x - this.marginLeft) / this.cellSize);
-    const r = Math.floor((y - this.marginTop) / this.cellSize);
+    const c = Math.floor((x - this.gridX) / this.cellSize);
+    const r = Math.floor((y - this.gridY) / this.cellSize);
     if (c < 0 || c >= this.M || r < 0 || r >= this.N) return null;
     return { r, c };
   }
@@ -173,13 +198,14 @@ class NonogramGame {
   render() {
     this.ctx.clearRect(0, 0, this.logicalW, this.logicalH);
     this.drawBackground();
+    this.drawBeam();
     this.drawCells();
-    this.drawHighlight();
     this.drawPreview();
     this.drawGridLines();
     this.drawClues();
     this.drawCursor();
     this.drawDragCounter();
+    if (this.won) this.drawSolvedShimmer();
     this.updateStatus();
   }
 
@@ -199,21 +225,49 @@ class NonogramGame {
   }
 
   drawBackground() {
-    const gx = this.marginLeft, gy = this.marginTop;
-    const gw = this.M * this.cellSize, gh = this.N * this.cellSize;
     const { palette, weights, angle } = this.puzzle.bg;
-    this.ctx.fillStyle = this.makeGradient(palette, weights, angle, gx, gy, gw, gh);
-    this.ctx.fillRect(gx, gy, gw, gh);
+    this.ctx.fillStyle = this.makeGradient(palette, weights, angle, this.gridX, this.gridY, this.gridW, this.gridH);
+    this.ctx.fillRect(this.gridX, this.gridY, this.gridW, this.gridH);
+  }
+
+  // Beam highlight — thin cyan crosshair through row/col center, occluded by fills
+  drawBeam() {
+    if (!this.settings.highlight) return;
+    let cell = null;
+    if (this.painting && this.dragCurrent) cell = this.dragCurrent;
+    else if (this.gamepadEnabled && this.cursor) cell = this.cursor;
+    else if (this.highlightCell) cell = this.highlightCell;
+    if (!cell) return;
+
+    const cs = this.cellSize;
+    const rowCenterY = this.gridY + cell.r * cs + cs / 2;
+    const colCenterX = this.gridX + cell.c * cs + cs / 2;
+
+    this.ctx.save();
+    this.ctx.shadowBlur = 8;
+    this.ctx.shadowColor = "rgba(56, 189, 248, 0.7)";
+    this.ctx.strokeStyle = "rgba(56, 189, 248, 0.75)";
+    this.ctx.lineWidth = 1.5;
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(this.gridX, rowCenterY);
+    this.ctx.lineTo(this.gridX + this.gridW, rowCenterY);
+    this.ctx.stroke();
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(colCenterX, this.gridY);
+    this.ctx.lineTo(colCenterX, this.gridY + this.gridH);
+    this.ctx.stroke();
+
+    this.ctx.restore();
   }
 
   drawCells() {
     const ctx = this.ctx, cs = this.cellSize;
     const fg = this.puzzle.fg;
-    const gx = this.marginLeft, gy = this.marginTop;
-    const gw = this.M * cs, gh = this.N * cs;
     let gradientFill = null;
     if (!this.puzzle.multiColor && fg.palette.length > 1) {
-      gradientFill = this.makeGradient(fg.palette, fg.weights, fg.angle, gx, gy, gw, gh);
+      gradientFill = this.makeGradient(fg.palette, fg.weights, fg.angle, this.gridX, this.gridY, this.gridW, this.gridH);
     }
     const mark = this.settings.markSymbol || "×";
     for (let r = 0; r < this.N; r++) for (let c = 0; c < this.M; c++) {
@@ -222,7 +276,10 @@ class NonogramGame {
         ctx.fillStyle = this.puzzle.multiColor
           ? (fg.palette[this.state[r][c]-1] || fg.palette[0])
           : (gradientFill || fg.palette[0]);
-        ctx.fillRect(x, y, cs, cs);
+        // Expand to cover any subpixel seams
+        const x0 = Math.floor(x), y0 = Math.floor(y);
+        const x1 = Math.ceil(x + cs), y1 = Math.ceil(y + cs);
+        ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
       } else if (this.marks[r][c]) {
         ctx.fillStyle = "#64748b";
         ctx.font = `${Math.floor(cs * 0.55)}px system-ui, sans-serif`;
@@ -230,32 +287,6 @@ class NonogramGame {
         ctx.fillText(mark, x + cs/2, y + cs/2 + 1);
       }
     }
-  }
-
-  drawHighlight() {
-    if (!this.settings.highlight) return;
-    const cell = this.getHighlightCell();
-    if (!cell) return;
-    const cs = this.cellSize;
-    const ctx = this.ctx;
-    ctx.fillStyle = "rgba(56, 189, 248, 0.10)";
-    for (let c = 0; c < this.M; c++) {
-      if (c === cell.c) continue;
-      if (this.state[cell.r][c] > 0 || this.marks[cell.r][c]) continue;
-      const { x, y } = this.cellToPixel(cell.r, c);
-      ctx.fillRect(x, y, cs, cs);
-    }
-    for (let r = 0; r < this.N; r++) {
-      if (r === cell.r) continue;
-      if (this.state[r][cell.c] > 0 || this.marks[r][cell.c]) continue;
-      const { x, y } = this.cellToPixel(r, cell.c);
-      ctx.fillRect(x, y, cs, cs);
-    }
-  }
-
-  getHighlightCell() {
-    if (this.gamepadEnabled && this.cursor) return this.cursor;
-    return this.highlightCell;
   }
 
   drawPreview() {
@@ -267,23 +298,23 @@ class NonogramGame {
     ctx.globalAlpha = 0.55;
     for (const cell of this.previewTrail) {
       const { x, y } = this.cellToPixel(cell.r, cell.c);
+      const x0 = Math.floor(x), y0 = Math.floor(y);
+      const x1 = Math.ceil(x + cs), y1 = Math.ceil(y + cs);
       if (this.previewValue.type === "state") {
         if (this.previewValue.value === 0) {
           ctx.fillStyle = "#0f172a";
-          ctx.fillRect(x, y, cs, cs);
+          ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
         } else {
           ctx.fillStyle = this.puzzle.multiColor
             ? (fg.palette[this.previewValue.value - 1] || fg.palette[0])
             : fg.palette[0];
-          ctx.fillRect(x, y, cs, cs);
+          ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
         }
-      } else if (this.previewValue.type === "mark") {
-        if (this.previewValue.value) {
-          ctx.fillStyle = "#94a3b8";
-          ctx.font = `${Math.floor(cs * 0.55)}px system-ui, sans-serif`;
-          ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          ctx.fillText(mark, x + cs/2, y + cs/2 + 1);
-        }
+      } else if (this.previewValue.type === "mark" && this.previewValue.value) {
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = `${Math.floor(cs * 0.55)}px system-ui, sans-serif`;
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(mark, x + cs/2, y + cs/2 + 1);
       }
     }
     ctx.restore();
@@ -291,8 +322,8 @@ class NonogramGame {
 
   drawGridLines() {
     const ctx = this.ctx, cs = this.cellSize;
-    const x0 = this.marginLeft, y0 = this.marginTop;
-    const x1 = x0 + this.M * cs, y1 = y0 + this.N * cs;
+    const x0 = this.gridX, y0 = this.gridY;
+    const x1 = x0 + this.gridW, y1 = y0 + this.gridH;
 
     if (this.settings.tileBorders) {
       ctx.strokeStyle = "rgba(148,163,184,0.15)"; ctx.lineWidth = 1;
@@ -316,7 +347,7 @@ class NonogramGame {
     }
 
     ctx.strokeStyle = "rgba(203,213,225,0.8)"; ctx.lineWidth = 2;
-    ctx.strokeRect(x0, y0, this.M*cs, this.N*cs);
+    ctx.strokeRect(x0, y0, this.gridW, this.gridH);
   }
 
   drawClues() {
@@ -325,7 +356,10 @@ class NonogramGame {
     ctx.textBaseline = "middle"; ctx.textAlign = "center";
     const surrounded = this.settings.surroundedOnly;
     const autoGray = this.settings.autoGray;
+    const sides = this.getClueSides();
+    const gap = cs * 0.7;
 
+    // Row clues
     for (let r = 0; r < this.N; r++) {
       const clues = this.rows[r].clues;
       const matched = autoGray
@@ -337,7 +371,9 @@ class NonogramGame {
       const { y } = this.cellToPixel(r, 0);
       for (let i = clues.length-1, k = 0; i >= 0; i--, k++) {
         const clue = clues[i];
-        const cx = this.marginLeft - (k + 0.5) * cs * 0.7 - 4;
+        const cx = sides.row === "left"
+          ? this.gridX - (k + 0.5) * gap - 4
+          : this.gridX + this.gridW + (k + 0.5) * gap + 4;
         let gray = false;
         if (isZero && lineEmpty) gray = true;
         else if (autoGray && matched) gray = matched[i];
@@ -346,6 +382,8 @@ class NonogramGame {
         ctx.fillText(String(clue.value), cx, y + cs/2);
       }
     }
+
+    // Column clues
     for (let c = 0; c < this.M; c++) {
       const col = this.state.map(row => row[c]);
       const colMarks = this.marks.map(row => row[c]);
@@ -359,7 +397,9 @@ class NonogramGame {
       const { x } = this.cellToPixel(0, c);
       for (let i = clues.length-1, k = 0; i >= 0; i--, k++) {
         const clue = clues[i];
-        const cy = this.marginTop - (k + 0.5) * cs * 0.7 - 4;
+        const cy = sides.col === "top"
+          ? this.gridY - (k + 0.5) * gap - 4
+          : this.gridY + this.gridH + (k + 0.5) * gap + 4;
         let gray = false;
         if (isZero && lineEmpty) gray = true;
         else if (autoGray && matched) gray = matched[i];
@@ -383,6 +423,19 @@ class NonogramGame {
     this.ctx.lineWidth = 1;
     this.ctx.strokeRect(x + 5.5, y + 5.5, cs - 11, cs - 11);
     this.ctx.globalAlpha = 1;
+  }
+
+  drawSolvedShimmer() {
+    const t = performance.now() / 1000;
+    const pulse = (Math.sin(t * 3) + 1) / 2;
+    const alpha = 0.4 + pulse * 0.5;
+    this.ctx.save();
+    this.ctx.shadowBlur = 12 + pulse * 12;
+    this.ctx.shadowColor = `rgba(251, 191, 36, ${alpha})`;
+    this.ctx.strokeStyle = `rgba(251, 191, 36, ${alpha})`;
+    this.ctx.lineWidth = 3;
+    this.ctx.strokeRect(this.gridX + 1, this.gridY + 1, this.gridW - 2, this.gridH - 2);
+    this.ctx.restore();
   }
 
   drawDragCounter() {
@@ -499,18 +552,24 @@ class NonogramGame {
   updateStatus() {
     if (this.won) return;
     if (!this.checkWin()) return;
+    const markWon = () => {
+      this.won = true;
+      if (this._solvedRaf) cancelAnimationFrame(this._solvedRaf);
+      const tick = () => {
+        if (!this.won) { this._solvedRaf = null; return; }
+        this.render();
+        this._solvedRaf = requestAnimationFrame(tick);
+      };
+      this._solvedRaf = requestAnimationFrame(tick);
+    };
     if (this.puzzle.strict) {
       this.gridHash().then(h => {
         if (!this.checkWin()) return;
         const exp = this.puzzle.options.hash;
-        if (exp === "sha256:" + h || exp === h) {
-          this.won = true;
-          this.canvas.classList.add("solved");
-        }
+        if (exp === "sha256:" + h || exp === h) markWon();
       });
     } else {
-      this.won = true;
-      this.canvas.classList.add("solved");
+      markWon();
     }
   }
 
@@ -546,26 +605,29 @@ class NonogramGame {
     this.manualGrayCols.delete(c);
     this.notifyChange();
   }
-  eraseCell(r, c) {
-    if (this.state[r][c] === 0 && !this.marks[r][c]) return;
-    this.state[r][c] = 0;
-    this.marks[r][c] = false;
-    this.suppressedMarks.delete(`${r},${c}`);
-    this.manualGrayRows.delete(r);
-    this.manualGrayCols.delete(c);
+
+  reset() {
+    for (let r = 0; r < this.N; r++) for (let c = 0; c < this.M; c++) {
+      this.state[r][c] = 0; this.marks[r][c] = false;
+    }
+    this.won = false;
+    if (this._solvedRaf) { cancelAnimationFrame(this._solvedRaf); this._solvedRaf = null; }
+    this.suppressedMarks.clear();
+    this.manualGrayRows.clear();
+    this.manualGrayCols.clear();
+    this.previewTrail = null;
+    this.previewValue = null;
+    this.setStatus("");
     this.notifyChange();
+    this.render();
   }
 
   toggleManualGray(axis, index, clueIdx) {
     let cells, marks, clues;
     if (axis === "row") {
-      cells = this.state[index];
-      marks = this.marks[index];
-      clues = this.rows[index].clues;
+      cells = this.state[index]; marks = this.marks[index]; clues = this.rows[index].clues;
     } else {
-      cells = this.state.map(r => r[index]);
-      marks = this.marks.map(r => r[index]);
-      clues = this.cols[index].clues;
+      cells = this.state.map(r => r[index]); marks = this.marks.map(r => r[index]); clues = this.cols[index].clues;
     }
     const matched = this.matchClues(cells, marks, clues, false);
     if (!matched[clueIdx]) return;
@@ -582,14 +644,21 @@ class NonogramGame {
     const x = clientX - rect.left;
     const y = clientY - rect.top;
     const cs = this.cellSize;
+    const sides = this.getClueSides();
+    const gap = cs * 0.7;
 
-    if (x >= 0 && x < this.marginLeft && y >= this.marginTop) {
-      const r = Math.floor((y - this.marginTop) / cs);
+    const inRowZone = sides.row === "left"
+      ? (x >= 0 && x < this.gridX)
+      : (x >= this.gridX + this.gridW && x < this.logicalW);
+    if (inRowZone && y >= this.gridY && y < this.gridY + this.gridH) {
+      const r = Math.floor((y - this.gridY) / cs);
       if (r >= 0 && r < this.N) {
         const clues = this.rows[r].clues;
         for (let i = 0; i < clues.length; i++) {
           const k = clues.length - 1 - i;
-          const cx = this.marginLeft - (k + 0.5) * cs * 0.7 - 4;
+          const cx = sides.row === "left"
+            ? this.gridX - (k + 0.5) * gap - 4
+            : this.gridX + this.gridW + (k + 0.5) * gap + 4;
           if (Math.abs(x - cx) < cs * 0.4) {
             this.toggleManualGray("row", r, i);
             return true;
@@ -597,13 +666,18 @@ class NonogramGame {
         }
       }
     }
-    if (y >= 0 && y < this.marginTop && x >= this.marginLeft) {
-      const c = Math.floor((x - this.marginLeft) / cs);
+    const inColZone = sides.col === "top"
+      ? (y >= 0 && y < this.gridY)
+      : (y >= this.gridY + this.gridH && y < this.logicalH);
+    if (inColZone && x >= this.gridX && x < this.gridX + this.gridW) {
+      const c = Math.floor((x - this.gridX) / cs);
       if (c >= 0 && c < this.M) {
         const clues = this.cols[c].clues;
         for (let i = 0; i < clues.length; i++) {
           const k = clues.length - 1 - i;
-          const cy = this.marginTop - (k + 0.5) * cs * 0.7 - 4;
+          const cy = sides.col === "top"
+            ? this.gridY - (k + 0.5) * gap - 4
+            : this.gridY + this.gridH + (k + 0.5) * gap + 4;
           if (Math.abs(y - cy) < cs * 0.4) {
             this.toggleManualGray("col", c, i);
             return true;
@@ -624,35 +698,15 @@ class NonogramGame {
     const trail = [];
     if (isVertical) {
       const step = Math.sign(dr);
-      for (let r = start.r; step > 0 ? r <= end.r : r >= end.r; r += step) {
-        trail.push({ r, c: start.c });
-      }
+      for (let r = start.r; step > 0 ? r <= end.r : r >= end.r; r += step) trail.push({ r, c: start.c });
     } else {
       const step = Math.sign(dc);
-      for (let c = start.c; step > 0 ? c <= end.c : c >= end.c; c += step) {
-        trail.push({ r: start.r, c });
-      }
+      for (let c = start.c; step > 0 ? c <= end.c : c >= end.c; c += step) trail.push({ r: start.r, c });
     }
     return trail;
   }
 
-  reset() {
-    for (let r = 0; r < this.N; r++) for (let c = 0; c < this.M; c++) {
-      this.state[r][c] = 0; this.marks[r][c] = false;
-    }
-    this.won = false;
-    this.suppressedMarks.clear();
-    this.manualGrayRows.clear();
-    this.manualGrayCols.clear();
-    this.previewTrail = null;
-    this.previewValue = null;
-    this.canvas.classList.remove("solved");
-    this.setStatus("");
-    this.notifyChange();
-    this.render();
-  }
-
-  // ---- pointer events ----
+  // ---- pointer ----
   setupPointerEvents() {
     const canvas = this.canvas;
     const getCell = e => {
@@ -663,8 +717,6 @@ class NonogramGame {
 
     canvas.addEventListener("pointerdown", e => {
       if (this.gamepadEnabled) {
-        const cell = getCell(e);
-        if (cell) this.highlightCell = cell;
         if (this.onGamepadTap) this.onGamepadTap();
         return;
       }
@@ -696,10 +748,8 @@ class NonogramGame {
       if (!this.painting) {
         if (e.pointerType === "mouse") {
           const cell = getCell(e);
-          if (cell) {
-            this.highlightCell = cell;
-            this.render();
-          }
+          this.highlightCell = cell;
+          this.render();
         }
         return;
       }
@@ -707,9 +757,7 @@ class NonogramGame {
       const cell = getCell(e);
       if (!cell) return;
       this.highlightCell = { ...cell };
-      if (cell.r !== this.dragStart.r || cell.c !== this.dragStart.c) {
-        this.dragMovedAway = true;
-      }
+      if (cell.r !== this.dragStart.r || cell.c !== this.dragStart.c) this.dragMovedAway = true;
       this.dragCurrent = { ...cell };
       if (cell.r === this.dragStart.r) this.dragAxis = "h";
       else if (cell.c === this.dragStart.c) this.dragAxis = "v";
@@ -742,11 +790,14 @@ class NonogramGame {
       this.dragCurrent = null;
       this.dragAxis = null;
       this.dragMovedAway = false;
+      this.highlightCell = null;
       this.autoMarkSolvedLines();
       this.render();
     };
     canvas.addEventListener("pointerup", stop);
     canvas.addEventListener("pointercancel", stop);
-    canvas.addEventListener("pointerleave", stop);
+    canvas.addEventListener("pointerleave", () => {
+      if (!this.painting) { this.highlightCell = null; this.render(); }
+    });
   }
 }
