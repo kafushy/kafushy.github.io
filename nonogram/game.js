@@ -25,7 +25,10 @@ class NonogramGame {
     this.won = false;
     this.painting = false;
     this.paintValue = null;
+    this.previewTrail = null;
+    this.previewValue = null;
     this.dragStart = null;
+    this.dragMovedAway = false;
     this.dragCurrent = null;
     this.dragAxis = null;
     this._checkingWin = false;
@@ -34,6 +37,11 @@ class NonogramGame {
     this.gamepadEnabled = false;
     this.cursor = null;
     this.onGamepadTap = null;
+
+    this.highlightCell = null;
+    this.suppressedMarks = new Set();
+    this.manualGrayRows = new Map();
+    this.manualGrayCols = new Map();
 
     this.resize();
     this.render();
@@ -106,19 +114,6 @@ class NonogramGame {
     this.render();
   }
 
-  actAtCursor(type) {
-    if (!this.gamepadEnabled || !this.cursor || this.won) return;
-    const { r, c } = this.cursor;
-    if (type === "fill") {
-      const v = this.state[r][c] === this.currentColor ? 0 : this.currentColor;
-      this.setCell(r, c, v);
-    } else if (type === "mark") {
-      this.setMark(r, c, !this.marks[r][c]);
-    }
-    this.autoMarkSolvedLines();
-    this.render();
-  }
-
   computeCursorColor() {
     if (!this.settings.cursorColorAuto) {
       return this.settings.cursorColorValue || "#fbbf24";
@@ -179,6 +174,8 @@ class NonogramGame {
     this.ctx.clearRect(0, 0, this.logicalW, this.logicalH);
     this.drawBackground();
     this.drawCells();
+    this.drawHighlight();
+    this.drawPreview();
     this.drawGridLines();
     this.drawClues();
     this.drawCursor();
@@ -235,6 +232,63 @@ class NonogramGame {
     }
   }
 
+  drawHighlight() {
+    if (!this.settings.highlight) return;
+    const cell = this.getHighlightCell();
+    if (!cell) return;
+    const cs = this.cellSize;
+    const ctx = this.ctx;
+    ctx.fillStyle = "rgba(56, 189, 248, 0.10)";
+    for (let c = 0; c < this.M; c++) {
+      if (c === cell.c) continue;
+      if (this.state[cell.r][c] > 0 || this.marks[cell.r][c]) continue;
+      const { x, y } = this.cellToPixel(cell.r, c);
+      ctx.fillRect(x, y, cs, cs);
+    }
+    for (let r = 0; r < this.N; r++) {
+      if (r === cell.r) continue;
+      if (this.state[r][cell.c] > 0 || this.marks[r][cell.c]) continue;
+      const { x, y } = this.cellToPixel(r, cell.c);
+      ctx.fillRect(x, y, cs, cs);
+    }
+  }
+
+  getHighlightCell() {
+    if (this.gamepadEnabled && this.cursor) return this.cursor;
+    return this.highlightCell;
+  }
+
+  drawPreview() {
+    if (!this.previewTrail || !this.previewValue) return;
+    const ctx = this.ctx, cs = this.cellSize;
+    const fg = this.puzzle.fg;
+    const mark = this.settings.markSymbol || "×";
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    for (const cell of this.previewTrail) {
+      const { x, y } = this.cellToPixel(cell.r, cell.c);
+      if (this.previewValue.type === "state") {
+        if (this.previewValue.value === 0) {
+          ctx.fillStyle = "#0f172a";
+          ctx.fillRect(x, y, cs, cs);
+        } else {
+          ctx.fillStyle = this.puzzle.multiColor
+            ? (fg.palette[this.previewValue.value - 1] || fg.palette[0])
+            : fg.palette[0];
+          ctx.fillRect(x, y, cs, cs);
+        }
+      } else if (this.previewValue.type === "mark") {
+        if (this.previewValue.value) {
+          ctx.fillStyle = "#94a3b8";
+          ctx.font = `${Math.floor(cs * 0.55)}px system-ui, sans-serif`;
+          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(mark, x + cs/2, y + cs/2 + 1);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
   drawGridLines() {
     const ctx = this.ctx, cs = this.cellSize;
     const x0 = this.marginLeft, y0 = this.marginTop;
@@ -277,11 +331,17 @@ class NonogramGame {
       const matched = autoGray
         ? this.matchClues(this.state[r], this.marks[r], clues, surrounded)
         : null;
+      const manual = this.manualGrayRows.get(r) || null;
+      const isZero = clues.length === 1 && clues[0].value === 0;
+      const lineEmpty = this.state[r].every(v => v === 0);
       const { y } = this.cellToPixel(r, 0);
       for (let i = clues.length-1, k = 0; i >= 0; i--, k++) {
         const clue = clues[i];
         const cx = this.marginLeft - (k + 0.5) * cs * 0.7 - 4;
-        const gray = matched ? matched[i] : false;
+        let gray = false;
+        if (isZero && lineEmpty) gray = true;
+        else if (autoGray && matched) gray = matched[i];
+        else if (manual && manual.has(i)) gray = true;
         ctx.fillStyle = gray ? "#475569" : (fg[clue.color-1] || "#e2e8f0");
         ctx.fillText(String(clue.value), cx, y + cs/2);
       }
@@ -293,11 +353,17 @@ class NonogramGame {
       const matched = autoGray
         ? this.matchClues(col, colMarks, clues, surrounded)
         : null;
+      const manual = this.manualGrayCols.get(c) || null;
+      const isZero = clues.length === 1 && clues[0].value === 0;
+      const lineEmpty = col.every(v => v === 0);
       const { x } = this.cellToPixel(0, c);
       for (let i = clues.length-1, k = 0; i >= 0; i--, k++) {
         const clue = clues[i];
         const cy = this.marginTop - (k + 0.5) * cs * 0.7 - 4;
-        const gray = matched ? matched[i] : false;
+        let gray = false;
+        if (isZero && lineEmpty) gray = true;
+        else if (autoGray && matched) gray = matched[i];
+        else if (manual && manual.has(i)) gray = true;
         ctx.fillStyle = gray ? "#475569" : (fg[clue.color-1] || "#e2e8f0");
         ctx.fillText(String(clue.value), x + cs/2, cy);
       }
@@ -314,7 +380,6 @@ class NonogramGame {
     this.ctx.lineWidth = 3;
     this.ctx.strokeRect(x + 1.5, y + 1.5, cs - 3, cs - 3);
     this.ctx.globalAlpha = 0.35;
-    this.ctx.strokeStyle = color;
     this.ctx.lineWidth = 1;
     this.ctx.strokeRect(x + 5.5, y + 5.5, cs - 11, cs - 11);
     this.ctx.globalAlpha = 1;
@@ -410,7 +475,10 @@ class NonogramGame {
     for (let r = 0; r < this.N; r++) {
       if (this.lineSolved(this.state[r], this.rows[r].clues)) {
         for (let c = 0; c < this.M; c++) {
-          if (this.state[r][c] === 0 && !this.marks[r][c]) { this.marks[r][c] = true; changed = true; }
+          if (this.state[r][c] === 0 && !this.marks[r][c]
+              && !this.suppressedMarks.has(`${r},${c}`)) {
+            this.marks[r][c] = true; changed = true;
+          }
         }
       }
     }
@@ -418,7 +486,10 @@ class NonogramGame {
       const col = this.state.map(row => row[c]);
       if (this.lineSolved(col, this.cols[c].clues)) {
         for (let r = 0; r < this.N; r++) {
-          if (this.state[r][c] === 0 && !this.marks[r][c]) { this.marks[r][c] = true; changed = true; }
+          if (this.state[r][c] === 0 && !this.marks[r][c]
+              && !this.suppressedMarks.has(`${r},${c}`)) {
+            this.marks[r][c] = true; changed = true;
+          }
         }
       }
     }
@@ -432,12 +503,14 @@ class NonogramGame {
       this.gridHash().then(h => {
         if (!this.checkWin()) return;
         const exp = this.puzzle.options.hash;
-        if (exp === "sha256:" + h || exp === h) { this.won = true; this.setStatus("Solved ✓"); }
-        else this.setStatus("All clues satisfied — but not the intended solution.", true);
+        if (exp === "sha256:" + h || exp === h) {
+          this.won = true;
+          this.canvas.classList.add("solved");
+        }
       });
     } else {
       this.won = true;
-      this.setStatus("Solved ✓");
+      this.canvas.classList.add("solved");
     }
   }
 
@@ -453,19 +526,114 @@ class NonogramGame {
     if (this.state[r][c] === val) return;
     if (val > 0 && this.marks[r][c] && this.settings.marksBlockFill) return;
     this.state[r][c] = val;
+    this.suppressedMarks.delete(`${r},${c}`);
+    this.manualGrayRows.delete(r);
+    this.manualGrayCols.delete(c);
     if (val > 0) this.marks[r][c] = false;
     this.notifyChange();
   }
   setMark(r, c, val) {
     if (this.marks[r][c] === val) return;
+    if (val && this.state[r][c] > 0 && this.settings.marksBlockFill) return;
     this.marks[r][c] = val;
-    if (val) this.state[r][c] = 0;
+    if (val) {
+      this.state[r][c] = 0;
+      this.suppressedMarks.delete(`${r},${c}`);
+    } else {
+      this.suppressedMarks.add(`${r},${c}`);
+    }
+    this.manualGrayRows.delete(r);
+    this.manualGrayCols.delete(c);
     this.notifyChange();
   }
   eraseCell(r, c) {
     if (this.state[r][c] === 0 && !this.marks[r][c]) return;
-    this.state[r][c] = 0; this.marks[r][c] = false;
+    this.state[r][c] = 0;
+    this.marks[r][c] = false;
+    this.suppressedMarks.delete(`${r},${c}`);
+    this.manualGrayRows.delete(r);
+    this.manualGrayCols.delete(c);
     this.notifyChange();
+  }
+
+  toggleManualGray(axis, index, clueIdx) {
+    let cells, marks, clues;
+    if (axis === "row") {
+      cells = this.state[index];
+      marks = this.marks[index];
+      clues = this.rows[index].clues;
+    } else {
+      cells = this.state.map(r => r[index]);
+      marks = this.marks.map(r => r[index]);
+      clues = this.cols[index].clues;
+    }
+    const matched = this.matchClues(cells, marks, clues, false);
+    if (!matched[clueIdx]) return;
+    const map = axis === "row" ? this.manualGrayRows : this.manualGrayCols;
+    if (!map.has(index)) map.set(index, new Set());
+    const set = map.get(index);
+    if (set.has(clueIdx)) set.delete(clueIdx);
+    else set.add(clueIdx);
+    this.render();
+  }
+
+  handleClueClick(clientX, clientY) {
+    const rect = this.canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const cs = this.cellSize;
+
+    if (x >= 0 && x < this.marginLeft && y >= this.marginTop) {
+      const r = Math.floor((y - this.marginTop) / cs);
+      if (r >= 0 && r < this.N) {
+        const clues = this.rows[r].clues;
+        for (let i = 0; i < clues.length; i++) {
+          const k = clues.length - 1 - i;
+          const cx = this.marginLeft - (k + 0.5) * cs * 0.7 - 4;
+          if (Math.abs(x - cx) < cs * 0.4) {
+            this.toggleManualGray("row", r, i);
+            return true;
+          }
+        }
+      }
+    }
+    if (y >= 0 && y < this.marginTop && x >= this.marginLeft) {
+      const c = Math.floor((x - this.marginLeft) / cs);
+      if (c >= 0 && c < this.M) {
+        const clues = this.cols[c].clues;
+        for (let i = 0; i < clues.length; i++) {
+          const k = clues.length - 1 - i;
+          const cy = this.marginTop - (k + 0.5) * cs * 0.7 - 4;
+          if (Math.abs(y - cy) < cs * 0.4) {
+            this.toggleManualGray("col", c, i);
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  computeTrail(start, end) {
+    if (!start || !end) return [];
+    const dr = end.r - start.r;
+    const dc = end.c - start.c;
+    if (dr === 0 && dc === 0) return [{ r: start.r, c: start.c }];
+    const angle = Math.atan2(Math.abs(dr), Math.abs(dc));
+    const isVertical = angle > Math.PI / 4;
+    const trail = [];
+    if (isVertical) {
+      const step = Math.sign(dr);
+      for (let r = start.r; step > 0 ? r <= end.r : r >= end.r; r += step) {
+        trail.push({ r, c: start.c });
+      }
+    } else {
+      const step = Math.sign(dc);
+      for (let c = start.c; step > 0 ? c <= end.c : c >= end.c; c += step) {
+        trail.push({ r: start.r, c });
+      }
+    }
+    return trail;
   }
 
   reset() {
@@ -473,6 +641,12 @@ class NonogramGame {
       this.state[r][c] = 0; this.marks[r][c] = false;
     }
     this.won = false;
+    this.suppressedMarks.clear();
+    this.manualGrayRows.clear();
+    this.manualGrayCols.clear();
+    this.previewTrail = null;
+    this.previewValue = null;
+    this.canvas.classList.remove("solved");
     this.setStatus("");
     this.notifyChange();
     this.render();
@@ -489,47 +663,85 @@ class NonogramGame {
 
     canvas.addEventListener("pointerdown", e => {
       if (this.gamepadEnabled) {
+        const cell = getCell(e);
+        if (cell) this.highlightCell = cell;
         if (this.onGamepadTap) this.onGamepadTap();
         return;
       }
       if (this.won) return;
-      this.painting = true;
       const cell = getCell(e);
-      if (!cell) return;
+      if (!cell) {
+        this.handleClueClick(e.clientX, e.clientY);
+        return;
+      }
+      this.painting = true;
       this.dragStart = { ...cell };
       this.dragCurrent = { ...cell };
+      this.dragMovedAway = false;
       this.dragAxis = null;
+      this.highlightCell = { ...cell };
       const isRight = e.button === 2;
-      const { r, c } = cell;
       if (isRight || this.tool === "mark") {
-        this.paintValue = { type: "mark", value: !this.marks[r][c] };
-        this.setMark(r, c, this.paintValue.value);
+        this.paintValue = { type: "mark", value: !this.marks[cell.r][cell.c] };
       } else {
-        const v = this.state[r][c] === this.currentColor ? 0 : this.currentColor;
+        const v = this.state[cell.r][cell.c] === this.currentColor ? 0 : this.currentColor;
         this.paintValue = { type: "state", value: v };
-        this.setCell(r, c, v);
       }
+      this.previewValue = this.paintValue;
+      this.previewTrail = [{ ...cell }];
       this.render();
     });
 
     canvas.addEventListener("pointermove", e => {
-      if (!this.painting || this.won || !this.paintValue) return;
+      if (!this.painting) {
+        if (e.pointerType === "mouse") {
+          const cell = getCell(e);
+          if (cell) {
+            this.highlightCell = cell;
+            this.render();
+          }
+        }
+        return;
+      }
+      if (this.won) return;
       const cell = getCell(e);
       if (!cell) return;
-      this.dragCurrent = { ...cell };
-      if (this.dragStart) {
-        if (cell.r === this.dragStart.r) this.dragAxis = "h";
-        else if (cell.c === this.dragStart.c) this.dragAxis = "v";
-        else this.dragAxis = null;
+      this.highlightCell = { ...cell };
+      if (cell.r !== this.dragStart.r || cell.c !== this.dragStart.c) {
+        this.dragMovedAway = true;
       }
-      if (this.paintValue.type === "mark") this.setMark(cell.r, cell.c, this.paintValue.value);
-      else this.setCell(cell.r, cell.c, this.paintValue.value);
+      this.dragCurrent = { ...cell };
+      if (cell.r === this.dragStart.r) this.dragAxis = "h";
+      else if (cell.c === this.dragStart.c) this.dragAxis = "v";
+      else this.dragAxis = null;
+      this.previewTrail = this.computeTrail(this.dragStart, cell);
       this.render();
     });
 
     const stop = () => {
-      this.painting = false; this.paintValue = null;
-      this.dragStart = null; this.dragCurrent = null; this.dragAxis = null;
+      if (!this.painting) return;
+      const trail = this.previewTrail || [];
+      const pv = this.previewValue;
+      this.painting = false;
+
+      const cancel = this.settings.noPaintIfReturnToStart
+        && this.dragMovedAway
+        && trail.length === 1;
+
+      if (!cancel && pv && trail.length > 0) {
+        for (const cell of trail) {
+          if (pv.type === "state") this.setCell(cell.r, cell.c, pv.value);
+          else if (pv.type === "mark") this.setMark(cell.r, cell.c, pv.value);
+        }
+      }
+
+      this.paintValue = null;
+      this.previewTrail = null;
+      this.previewValue = null;
+      this.dragStart = null;
+      this.dragCurrent = null;
+      this.dragAxis = null;
+      this.dragMovedAway = false;
       this.autoMarkSolvedLines();
       this.render();
     };
