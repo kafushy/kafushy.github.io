@@ -667,7 +667,11 @@ class NonogramGame {
     canvas.addEventListener("contextmenu", e => e.preventDefault());
 
     canvas.addEventListener("pointerdown", e => {
-      if (this.gamepadEnabled) { if (this.onGamepadTap) this.onGamepadTap(); return; }
+  if (this.gamepadEnabled) {
+    if (this._gamepadDragging) return;
+    if (this.onGamepadTap) this.onGamepadTap();
+    return;
+  }
       if (this.won) return;
       const cell = getCell(e);
       if (!cell) { this.handleClueClick(e.clientX, e.clientY); return; }
