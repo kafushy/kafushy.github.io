@@ -245,3 +245,67 @@ canvas { display: block; touch-action: none; }
   border-radius: 6px; z-index: 100;
 }
 .back-link:hover { color: var(--text); background: var(--panel); }
+
+/* ---- Virtual gamepad ---- */
+#gamepad {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem 1rem;
+  gap: 1rem;
+}
+#gamepad.hidden { display: none; }
+
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 48px);
+  grid-template-rows: repeat(3, 48px);
+  gap: 4px;
+}
+.dpad-btn {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 1rem;
+  cursor: pointer;
+  font-family: inherit;
+  touch-action: none;
+  user-select: none; -webkit-user-select: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.dpad-btn:active { background: var(--accent); color: var(--bg); }
+.dpad-btn.up { grid-area: 1 / 2; }
+.dpad-btn.left { grid-area: 2 / 1; }
+.dpad-btn.center {
+  grid-area: 2 / 2;
+  background: transparent;
+  border: none;
+  pointer-events: none;
+  color: var(--dim);
+  font-size: 0.7rem;
+}
+.dpad-btn.right { grid-area: 2 / 3; }
+.dpad-btn.down { grid-area: 3 / 2; }
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.act-btn {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 1rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+  font-weight: 600;
+  min-width: 84px;
+  touch-action: none;
+  user-select: none; -webkit-user-select: none;
+}
+.act-btn:active { background: var(--accent); color: var(--bg); }
