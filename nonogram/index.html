@@ -4,9 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Nonogram</title>
-  <link rel="stylesheet" href="./style.css?v=3">
+  <link rel="stylesheet" href="./style.css?v=9">
   <script>
-    // Visible error handler — any script error appears at top of page
     window.addEventListener("error", e => {
       const pre = document.createElement("pre");
       pre.style.cssText = "background:#7f1d1d;color:#fff;padding:0.6rem;font-size:0.75rem;white-space:pre-wrap;margin:0;position:relative;z-index:9999;";
@@ -14,15 +13,10 @@
         "\n" + (e.filename || "") + ":" + (e.lineno || "?");
       document.body.insertBefore(pre, document.body.firstChild);
     });
-    window.addEventListener("unhandledrejection", e => {
-      const pre = document.createElement("pre");
-      pre.style.cssText = "background:#7f1d1d;color:#fff;padding:0.6rem;font-size:0.75rem;white-space:pre-wrap;margin:0;position:relative;z-index:9999;";
-      pre.textContent = "PROMISE ERROR:\n" + (e.reason?.message || e.reason);
-      document.body.insertBefore(pre, document.body.firstChild);
-    });
   </script>
 </head>
 <body>
+
 <a href="../" class="back-link">← hub</a>
 
 <header id="header">
@@ -63,10 +57,10 @@
       <label for="set-surroundedOnly">Only gray when surrounded</label>
       <input type="checkbox" id="set-surroundedOnly">
     </div>
-<div class="setting">
-  <label for="set-marksBlockFill">Marks block fills</label>
-  <input type="checkbox" id="set-marksBlockFill">
-</div>
+    <div class="setting">
+      <label for="set-marksBlockFill">Marks block fills</label>
+      <input type="checkbox" id="set-marksBlockFill">
+    </div>
 
     <h3>Visual</h3>
     <div class="setting">
@@ -81,10 +75,10 @@
       <label for="set-markSymbol">Mark symbol</label>
       <select id="set-markSymbol"></select>
     </div>
-<div class="setting">
-  <label for="set-pageBgColor">Page background</label>
-  <input type="color" id="set-pageBgColor">
-</div>
+    <div class="setting">
+      <label for="set-pageBgColor">Page background</label>
+      <input type="color" id="set-pageBgColor">
+    </div>
 
     <h3>Drag</h3>
     <div class="setting">
@@ -92,10 +86,35 @@
       <input type="number" id="set-dragCounterThreshold" min="0" max="50">
     </div>
 
-    <h3>Advanced</h3>
+    <h3>Gamepad</h3>
     <div class="setting">
-      <label for="set-gamepad">Virtual gamepad <span style="color:var(--dim);font-size:0.75rem">(stub)</span></label>
-      <input type="checkbox" id="set-gamepad">
+      <label for="set-gamepadScale">Scale</label>
+      <input type="range" id="set-gamepadScale" min="0.6" max="1.6" step="0.1">
+    </div>
+    <div class="setting">
+      <label for="set-gamepadPosition">Position</label>
+      <select id="set-gamepadPosition">
+        <option value="bottom-left">Bottom left</option>
+        <option value="bottom-right">Bottom right</option>
+        <option value="top-left">Top left</option>
+        <option value="top-right">Top right</option>
+      </select>
+    </div>
+    <div class="setting">
+      <label for="set-gamepadColor">Gamepad color</label>
+      <input type="color" id="set-gamepadColor">
+    </div>
+    <div class="setting">
+      <label for="set-cursorWrap">Cursor wraps at edges</label>
+      <input type="checkbox" id="set-cursorWrap">
+    </div>
+    <div class="setting">
+      <label for="set-cursorColorAuto">Cursor color auto-invert</label>
+      <input type="checkbox" id="set-cursorColorAuto">
+    </div>
+    <div class="setting" id="cursorColorFixedRow" style="display:none">
+      <label for="set-cursorColorValue">Cursor color</label>
+      <input type="color" id="set-cursorColorValue">
     </div>
 
     <div id="tab-settings-info"></div>
@@ -104,31 +123,30 @@
 
 <main id="game-wrap"></main>
 
-<div id="gamepad" class="hidden">
-  <div class="dpad">
-    <button class="dpad-btn up" data-dir="up" aria-label="up">▲</button>
-    <button class="dpad-btn left" data-dir="left" aria-label="left">◀</button>
-    <button class="dpad-btn center">·</button>
-    <button class="dpad-btn right" data-dir="right" aria-label="right">▶</button>
-    <button class="dpad-btn down" data-dir="down" aria-label="down">▼</button>
-  </div>
-  <div class="actions">
-    <button class="act-btn" data-action="fill">Fill</button>
-    <button class="act-btn" data-action="mark">Mark</button>
-    <button class="act-btn" data-action="erase">Erase</button>
+<button id="tool-btn" aria-label="tool">
+  <span id="tool-symbol"></span>
+</button>
+
+<div id="gamepad" class="hidden pos-bl">
+  <div id="gamepad-inner">
+    <div class="dpad">
+      <button class="dpad-btn up"    data-dir="up"    aria-label="up">▲</button>
+      <button class="dpad-btn left"  data-dir="left"  aria-label="left">◀</button>
+      <button class="dpad-btn right" data-dir="right" aria-label="right">▶</button>
+      <button class="dpad-btn down"  data-dir="down"  aria-label="down">▼</button>
+    </div>
+    <div class="actions">
+      <button class="act-btn" data-action="mark" id="gp-mark"></button>
+      <button class="act-btn" data-action="fill" id="gp-fill"></button>
+    </div>
   </div>
 </div>
-
-<button id="tool-btn">
-  <span id="tool-label">Fill</span>
-  <span class="hint">tap: mode · drag: erase · hold: reset</span>
-</button>
 
 <div id="ghost" class="hidden">×</div>
 <div id="status" class="hidden"></div>
 
-<script src="./format.js?v=6"></script>
-<script src="./game.js?v=6"></script>
-<script src="./app.js?v=6"></script>
+<script src="./format.js?v=9"></script>
+<script src="./game.js?v=9"></script>
+<script src="./app.js?v=9"></script>
 </body>
 </html>
