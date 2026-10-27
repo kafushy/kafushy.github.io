@@ -2,7 +2,7 @@
 
 const DEFAULT_PUZZLE_TEXT = `
 kafushy, Heart, 2026-10-26, v1
-#0f172a 3 #1e293b 1 90 / #ef4444 90
+#0a0f1e 3 #1e293b 1 90 / #ef4444 90
 /1 1.5.5.3.1/2.4.4.4.2
 `;
 
@@ -14,8 +14,10 @@ const DEFAULT_SETTINGS = {
   tileBorders: true,
   gridLineEvery: 5,
   dragCounterThreshold: 0,
+  noPaintIfReturnToStart: false,
   markSymbol: "×",
   pageBgColor: "#0f172a",
+  highlight: true,
   gamepadScale: 1,
   gamepadPosition: "bottom-left",
   gamepadColor: "#1e293b",
@@ -26,7 +28,6 @@ const DEFAULT_SETTINGS = {
 
 const MARK_OPTIONS = ["×", "•", "/", "-", "+", "●", "○"];
 
-// ---- persistence ----
 function loadSettings() {
   try {
     const raw = localStorage.getItem("nono_settings");
@@ -66,7 +67,6 @@ function clearSavedState() {
   try { localStorage.removeItem("nono_state"); } catch {}
 }
 
-// ---- globals ----
 let currentGame = null;
 let currentPuzzleText = loadPuzzleText();
 let settings = loadSettings();
@@ -76,7 +76,6 @@ document.documentElement.style.setProperty("--bg", settings.pageBgColor || "#0f1
 
 let gameWrap, toolBtn, toolSymbol, statusEl, gamepadEl, gamepadInner;
 
-// ---- boot ----
 document.addEventListener("DOMContentLoaded", () => {
   gameWrap = document.getElementById("game-wrap");
   toolBtn = document.getElementById("tool-btn");
@@ -91,6 +90,7 @@ document.addEventListener("DOMContentLoaded", () => {
   wireToolButton();
   wireGamepad();
   applyGamepadStyle();
+  updateSurroundedOnlyVisibility();
   loadPuzzle(currentPuzzleText, loadSavedState(currentPuzzleText));
 });
 
@@ -104,6 +104,12 @@ function wireTabs() {
   document.querySelectorAll(".tabs button").forEach(btn => {
     btn.addEventListener("click", () => {
       const tab = btn.dataset.tab;
+      const wasActive = btn.classList.contains("active");
+      const optionsEl = document.getElementById("options");
+      if (wasActive) {
+        optionsEl.classList.add("hidden");
+        return;
+      }
       document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b === btn));
       document.querySelectorAll(".tab-content").forEach(tc => {
         tc.classList.toggle("hidden", tc.id !== "tab-" + tab);
@@ -112,7 +118,11 @@ function wireTabs() {
   });
 }
 
-// ---- settings ----
+function updateSurroundedOnlyVisibility() {
+  const row = document.getElementById("row-surroundedOnly");
+  if (row) row.style.display = settings.autoGray ? "flex" : "none";
+}
+
 function wireSettingsControls() {
   const bindToggle = (id, key, after) => {
     const el = document.getElementById(id);
@@ -139,10 +149,12 @@ function wireSettingsControls() {
   };
 
   bindToggle("set-autoMark", "autoMark");
-  bindToggle("set-autoGray", "autoGray");
+  bindToggle("set-autoGray", "autoGray", updateSurroundedOnlyVisibility);
   bindToggle("set-surroundedOnly", "surroundedOnly");
   bindToggle("set-marksBlockFill", "marksBlockFill");
   bindToggle("set-tileBorders", "tileBorders");
+  bindToggle("set-highlight", "highlight");
+  bindToggle("set-noPaintIfReturnToStart", "noPaintIfReturnToStart");
   bindNumber("set-gridLineEvery", "gridLineEvery", 0, 20);
   bindNumber("set-dragCounterThreshold", "dragCounterThreshold", 0, 50);
 
@@ -169,7 +181,6 @@ function wireSettingsControls() {
     saveSettings(settings);
   });
 
-  // Gamepad
   const scaleEl = document.getElementById("set-gamepadScale");
   scaleEl.value = settings.gamepadScale;
   scaleEl.addEventListener("input", () => {
@@ -215,7 +226,6 @@ function wireSettingsControls() {
   });
 }
 
-// ---- info ----
 function renderInfo(puzzle) {
   const el = document.getElementById("tab-settings-info");
   if (!el || !puzzle) return;
@@ -244,7 +254,6 @@ function esc(s) {
     ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
-// ---- load ----
 function loadPuzzle(text, savedState) {
   let puzzle;
   try { puzzle = parseNonogram(text); }
@@ -287,7 +296,6 @@ function showStatus(msg, isError) {
   statusEl.classList.toggle("error", !!isError);
 }
 
-// ---- gamepad show/hide ----
 function enableGamepad() {
   gamepadVisible = true;
   toolBtn.classList.add("hidden");
@@ -303,10 +311,8 @@ function disableGamepad() {
 }
 
 function applyGamepadStyle() {
-  // Position class
   gamepadEl.classList.remove("pos-bl", "pos-br", "pos-tl", "pos-tr");
   gamepadEl.classList.add("pos-" + (settings.gamepadPosition || "bottom-left").split("-").map(w => w[0]).join(""));
-  // Scale + color via CSS vars
   gamepadEl.style.setProperty("--gp-scale", settings.gamepadScale || 1);
   gamepadEl.style.setProperty("--gp-color", settings.gamepadColor || "#1e293b");
 }
@@ -328,7 +334,6 @@ function updateGamepadButtons() {
   }
 }
 
-// ---- gamepad wiring ----
 function wireGamepad() {
   const moves = {
     up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1],
@@ -361,15 +366,73 @@ function wireGamepad() {
   });
 
   document.querySelectorAll(".act-btn").forEach(btn => {
-    btn.addEventListener("click", e => {
-      e.preventDefault();
-      if (!currentGame) return;
-      currentGame.actAtCursor(btn.dataset.action);
-    });
+    wireGamepadAction(btn, btn.dataset.action);
   });
 }
 
-// ---- tool button ----
+function wireGamepadAction(btn, action) {
+  let painting = false;
+  let paintValue = null;
+  let paintedCells = new Set();
+
+  const tryPaintAt = (clientX, clientY) => {
+    if (!currentGame) return;
+    const rect = currentGame.canvas.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
+    const cell = currentGame.pixelToCell(clientX - rect.left, clientY - rect.top);
+    if (!cell) return;
+    const key = `${cell.r},${cell.c}`;
+    if (paintedCells.has(key)) return;
+    paintedCells.add(key);
+    if (paintValue.type === "state") currentGame.setCell(cell.r, cell.c, paintValue.value);
+    else if (paintValue.type === "mark") currentGame.setMark(cell.r, cell.c, paintValue.value);
+    currentGame.render();
+  };
+
+  btn.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    if (!currentGame) return;
+    painting = true;
+    paintedCells = new Set();
+
+    const startCell = currentGame.cursor || { r: 0, c: 0 };
+    if (action === "fill") {
+      const v = currentGame.state[startCell.r][startCell.c] === currentGame.currentColor
+        ? 0 : currentGame.currentColor;
+      paintValue = { type: "state", value: v };
+    } else if (action === "mark") {
+      paintValue = { type: "mark", value: !currentGame.marks[startCell.r][startCell.c] };
+    }
+
+    tryPaintAt(e.clientX, e.clientY);
+    try { btn.setPointerCapture(e.pointerId); } catch {}
+  });
+
+  btn.addEventListener("pointermove", e => {
+    if (!painting || !currentGame) return;
+    tryPaintAt(e.clientX, e.clientY);
+  });
+
+  const end = () => {
+    if (!painting) return;
+    painting = false;
+    if (currentGame && paintedCells.size === 0 && currentGame.cursor) {
+      const { r, c } = currentGame.cursor;
+      if (paintValue.type === "state") currentGame.setCell(r, c, paintValue.value);
+      else if (paintValue.type === "mark") currentGame.setMark(r, c, paintValue.value);
+    }
+    if (currentGame) {
+      currentGame.autoMarkSolvedLines();
+      currentGame.render();
+    }
+    paintedCells.clear();
+    paintValue = null;
+  };
+
+  btn.addEventListener("pointerup", end);
+  btn.addEventListener("pointercancel", end);
+}
+
 function wireToolButton() {
   let gesture = {
     active: false, startX: 0, startY: 0,
@@ -411,7 +474,7 @@ function wireToolButton() {
     }
   });
 
-  const end = e => {
+  const end = () => {
     if (!gesture.active) return;
     clearTimeout(gesture.resetTimer);
     toolBtn.classList.remove("held");
