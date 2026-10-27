@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Nonogram</title>
-  <link rel="stylesheet" href="./style.css?v=11">
+  <link rel="stylesheet" href="./style.css?v=12">
   <script>
     window.addEventListener("error", e => {
       const pre = document.createElement("pre");
@@ -48,6 +48,10 @@
     <div class="setting">
       <label for="set-autoMark">Auto-mark completed lines</label>
       <input type="checkbox" id="set-autoMark">
+    </div>
+    <div class="setting" id="row-cleanupAutoMarks">
+      <label for="set-cleanupAutoMarks">Remove orphaned auto-marks</label>
+      <input type="checkbox" id="set-cleanupAutoMarks">
     </div>
     <div class="setting">
       <label for="set-autoGray">Auto-gray clues</label>
@@ -162,8 +166,8 @@
 <div id="ghost" class="hidden">×</div>
 <div id="status" class="hidden"></div>
 
-<script src="./format.js?v=11"></script>
-<script src="./game.js?v=11"></script>
-<script src="./app.js?v=11"></script>
+<script src="./format.js?v=12"></script>
+<script src="./game.js?v=12"></script>
+<script src="./app.js?v=12"></script>
 </body>
 </html>
