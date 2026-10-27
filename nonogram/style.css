@@ -26,7 +26,6 @@ body {
   height: 100vh; height: 100dvh;
 }
 
-/* ---- Header ---- */
 #header {
   padding: 0.75rem 1rem 0.5rem;
   cursor: pointer;
@@ -45,7 +44,6 @@ body {
   margin-top: 0.15rem;
 }
 
-/* ---- Options panel ---- */
 #options {
   background: var(--panel);
   border-top: 1px solid var(--border);
@@ -154,7 +152,6 @@ body {
   margin-top: 0.5rem;
 }
 
-/* ---- Grid area ---- */
 #game-wrap {
   flex: 1;
   display: flex; align-items: center; justify-content: center;
@@ -162,9 +159,15 @@ body {
   overflow: hidden;
   min-height: 0;
 }
-canvas { display: block; touch-action: none; }
+canvas { display: block; touch-action: none; border-radius: 4px; }
+canvas.solved {
+  animation: solved-pulse 2s ease-in-out infinite;
+}
+@keyframes solved-pulse {
+  0%, 100% { box-shadow: 0 0 8px 0 rgba(251, 191, 36, 0.4); }
+  50%      { box-shadow: 0 0 20px 6px rgba(251, 191, 36, 0.75); }
+}
 
-/* ---- Tool button (tapbox) ---- */
 #tool-btn {
   flex-shrink: 0;
   align-self: center;
@@ -205,7 +208,6 @@ canvas { display: block; touch-action: none; }
   100% { background: var(--danger); border-color: var(--danger); color: #fff; }
 }
 
-/* ---- Gamepad ---- */
 #gamepad {
   position: fixed;
   z-index: 50;
@@ -277,7 +279,6 @@ canvas { display: block; touch-action: none; }
   color: rgba(0,0,0,0.6);
 }
 
-/* ---- Ghost / Status / Back ---- */
 #ghost {
   position: fixed;
   width: 44px; height: 44px;
