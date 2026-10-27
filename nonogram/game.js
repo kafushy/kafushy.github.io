@@ -21,7 +21,7 @@ class NonogramGame {
     this.state = Array.from({ length: this.N }, () => new Array(this.M).fill(0));
     this.marks = Array.from({ length: this.N }, () => new Array(this.M).fill(false));
     this.currentColor = 1;
-    this.tool = "fill"; // "fill" or "mark"
+    this.tool = "fill";
     this.won = false;
     this.painting = false;
     this.paintValue = null;
@@ -30,6 +30,10 @@ class NonogramGame {
     this.dragAxis = null;
     this._checkingWin = false;
     this.onStateChange = null;
+
+    // gamepad
+    this.gamepadEnabled = false;
+    this.cursor = null;
 
     this.resize();
     this.render();
@@ -42,9 +46,27 @@ class NonogramGame {
       this.render();
     };
     window.addEventListener("resize", this._onResize);
+
+    this._keyHandler = (e) => {
+      if (!this.gamepadEnabled) return;
+      const moves = {
+        ArrowUp: [-1, 0], ArrowDown: [1, 0],
+        ArrowLeft: [0, -1], ArrowRight: [0, 1],
+      };
+      const m = moves[e.key];
+      if (m) {
+        e.preventDefault();
+        this.moveCursor(m[0], m[1]);
+      }
+    };
+    window.addEventListener("keydown", this._keyHandler);
   }
 
-  destroy() { window.removeEventListener("resize", this._onResize); }
+  destroy() {
+    window.removeEventListener("resize", this._onResize);
+    window.removeEventListener("keydown", this._keyHandler);
+  }
+
   setTool(t) { this.tool = t; }
   setSettings(s) { this.settings = s; this.render(); }
 
@@ -57,6 +79,38 @@ class NonogramGame {
   }
 
   notifyChange() { if (this.onStateChange) this.onStateChange(); }
+
+  // ---------- gamepad ----------
+  setGamepadEnabled(enabled) {
+    this.gamepadEnabled = enabled;
+    if (enabled && !this.cursor) {
+      this.cursor = { r: Math.floor(this.N / 2), c: Math.floor(this.M / 2) };
+    }
+    this.render();
+  }
+
+  moveCursor(dr, dc) {
+    if (!this.gamepadEnabled) return;
+    if (!this.cursor) this.cursor = { r: 0, c: 0 };
+    this.cursor.r = Math.max(0, Math.min(this.N - 1, this.cursor.r + dr));
+    this.cursor.c = Math.max(0, Math.min(this.M - 1, this.cursor.c + dc));
+    this.render();
+  }
+
+  actAtCursor(type) {
+    if (!this.gamepadEnabled || !this.cursor || this.won) return;
+    const { r, c } = this.cursor;
+    if (type === "fill") {
+      const v = this.state[r][c] === this.currentColor ? 0 : this.currentColor;
+      this.setCell(r, c, v);
+    } else if (type === "mark") {
+      this.setMark(r, c, !this.marks[r][c]);
+    } else if (type === "erase") {
+      this.eraseCell(r, c);
+    }
+    this.autoMarkSolvedLines();
+    this.render();
+  }
 
   // ---------- sizing ----------
   resize() {
@@ -100,6 +154,7 @@ class NonogramGame {
     this.drawCells();
     this.drawGridLines();
     this.drawClues();
+    this.drawCursor();
     this.drawDragCounter();
     this.updateStatus();
   }
@@ -183,49 +238,62 @@ class NonogramGame {
     ctx.strokeRect(x0, y0, this.M*cs, this.N*cs);
   }
 
-drawClues() {
-  const ctx = this.ctx, cs = this.cellSize, fg = this.puzzle.fg.palette;
-  ctx.font = `${Math.max(10, Math.floor(cs * 0.42))}px system-ui, sans-serif`;
-  ctx.textBaseline = "middle"; ctx.textAlign = "center";
-  const surrounded = this.settings.surroundedOnly;
-  const autoGray = this.settings.autoGray;
+  drawClues() {
+    const ctx = this.ctx, cs = this.cellSize, fg = this.puzzle.fg.palette;
+    ctx.font = `${Math.max(10, Math.floor(cs * 0.42))}px system-ui, sans-serif`;
+    ctx.textBaseline = "middle"; ctx.textAlign = "center";
+    const surrounded = this.settings.surroundedOnly;
+    const autoGray = this.settings.autoGray;
 
-  for (let r = 0; r < this.N; r++) {
-    const clues = this.rows[r].clues;
-    const matched = autoGray
-      ? this.matchClues(this.state[r], this.marks[r], clues, surrounded)
-      : null;
-    const { y } = this.cellToPixel(r, 0);
-    for (let i = clues.length-1, k = 0; i >= 0; i--, k++) {
-      const clue = clues[i];
-      const cx = this.marginLeft - (k + 0.5) * cs * 0.7 - 4;
-      const gray = matched ? matched[i] : false;
-      ctx.fillStyle = gray ? "#475569" : (fg[clue.color-1] || "#e2e8f0");
-      ctx.fillText(String(clue.value), cx, y + cs/2);
+    for (let r = 0; r < this.N; r++) {
+      const clues = this.rows[r].clues;
+      const matched = autoGray
+        ? this.matchClues(this.state[r], this.marks[r], clues, surrounded)
+        : null;
+      const { y } = this.cellToPixel(r, 0);
+      for (let i = clues.length-1, k = 0; i >= 0; i--, k++) {
+        const clue = clues[i];
+        const cx = this.marginLeft - (k + 0.5) * cs * 0.7 - 4;
+        const gray = matched ? matched[i] : false;
+        ctx.fillStyle = gray ? "#475569" : (fg[clue.color-1] || "#e2e8f0");
+        ctx.fillText(String(clue.value), cx, y + cs/2);
+      }
+    }
+    for (let c = 0; c < this.M; c++) {
+      const col = this.state.map(row => row[c]);
+      const colMarks = this.marks.map(row => row[c]);
+      const clues = this.cols[c].clues;
+      const matched = autoGray
+        ? this.matchClues(col, colMarks, clues, surrounded)
+        : null;
+      const { x } = this.cellToPixel(0, c);
+      for (let i = clues.length-1, k = 0; i >= 0; i--, k++) {
+        const clue = clues[i];
+        const cy = this.marginTop - (k + 0.5) * cs * 0.7 - 4;
+        const gray = matched ? matched[i] : false;
+        ctx.fillStyle = gray ? "#475569" : (fg[clue.color-1] || "#e2e8f0");
+        ctx.fillText(String(clue.value), x + cs/2, cy);
+      }
     }
   }
-  for (let c = 0; c < this.M; c++) {
-    const col = this.state.map(row => row[c]);
-    const colMarks = this.marks.map(row => row[c]);
-    const clues = this.cols[c].clues;
-    const matched = autoGray
-      ? this.matchClues(col, colMarks, clues, surrounded)
-      : null;
-    const { x } = this.cellToPixel(0, c);
-    for (let i = clues.length-1, k = 0; i >= 0; i--, k++) {
-      const clue = clues[i];
-      const cy = this.marginTop - (k + 0.5) * cs * 0.7 - 4;
-      const gray = matched ? matched[i] : false;
-      ctx.fillStyle = gray ? "#475569" : (fg[clue.color-1] || "#e2e8f0");
-      ctx.fillText(String(clue.value), x + cs/2, cy);
-    }
+
+  drawCursor() {
+    if (!this.gamepadEnabled || !this.cursor) return;
+    const { r, c } = this.cursor;
+    const { x, y } = this.cellToPixel(r, c);
+    const cs = this.cellSize;
+    this.ctx.strokeStyle = "#fbbf24";
+    this.ctx.lineWidth = 3;
+    this.ctx.strokeRect(x + 1.5, y + 1.5, cs - 3, cs - 3);
+    this.ctx.strokeStyle = "rgba(251, 191, 36, 0.35)";
+    this.ctx.lineWidth = 1;
+    this.ctx.strokeRect(x + 5.5, y + 5.5, cs - 11, cs - 11);
   }
-}
 
   drawDragCounter() {
     const threshold = this.settings.dragCounterThreshold;
     if (!threshold || threshold <= 0) return;
-    if (!this.dragging || !this.dragAxis || !this.dragStart || !this.dragCurrent) return;
+    if (!this.painting || !this.dragAxis || !this.dragStart || !this.dragCurrent) return;
     const s = this.dragStart, e = this.dragCurrent, cs = this.cellSize;
     const len = this.dragAxis === "h"
       ? Math.abs(e.c - s.c) + 1
@@ -352,12 +420,12 @@ drawClues() {
 
   // ---------- mutation ----------
   setCell(r, c, val) {
-  if (this.state[r][c] === val) return;
-  if (val > 0 && this.marks[r][c] && this.settings.marksBlockFill) return;
-  this.state[r][c] = val;
-  if (val > 0) this.marks[r][c] = false;
-  this.notifyChange();
-}
+    if (this.state[r][c] === val) return;
+    if (val > 0 && this.marks[r][c] && this.settings.marksBlockFill) return;
+    this.state[r][c] = val;
+    if (val > 0) this.marks[r][c] = false;
+    this.notifyChange();
+  }
   setMark(r, c, val) {
     if (this.marks[r][c] === val) return;
     this.marks[r][c] = val;
@@ -423,7 +491,6 @@ drawClues() {
       const cell = getCell(e);
       if (!cell) return;
       this.dragCurrent = { ...cell };
-      // determine axis
       if (this.dragStart) {
         if (cell.r === this.dragStart.r) this.dragAxis = "h";
         else if (cell.c === this.dragStart.c) this.dragAxis = "v";
