@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Nonogram</title>
-  <link rel="stylesheet" href="./style.css?v=9">
+  <link rel="stylesheet" href="./style.css?v=10">
   <script>
     window.addEventListener("error", e => {
       const pre = document.createElement("pre");
@@ -53,12 +53,12 @@
       <label for="set-autoGray">Auto-gray clues</label>
       <input type="checkbox" id="set-autoGray">
     </div>
-    <div class="setting">
+    <div class="setting" id="row-surroundedOnly">
       <label for="set-surroundedOnly">Only gray when surrounded</label>
       <input type="checkbox" id="set-surroundedOnly">
     </div>
     <div class="setting">
-      <label for="set-marksBlockFill">Marks block fills</label>
+      <label for="set-marksBlockFill">Marks block fills (and vice versa)</label>
       <input type="checkbox" id="set-marksBlockFill">
     </div>
 
@@ -79,11 +79,19 @@
       <label for="set-pageBgColor">Page background</label>
       <input type="color" id="set-pageBgColor">
     </div>
+    <div class="setting">
+      <label for="set-highlight">Highlight row/column</label>
+      <input type="checkbox" id="set-highlight">
+    </div>
 
     <h3>Drag</h3>
     <div class="setting">
       <label for="set-dragCounterThreshold">Show counter after N cells (0 = off)</label>
       <input type="number" id="set-dragCounterThreshold" min="0" max="50">
+    </div>
+    <div class="setting">
+      <label for="set-noPaintIfReturnToStart">Return to start cancels drag</label>
+      <input type="checkbox" id="set-noPaintIfReturnToStart">
     </div>
 
     <h3>Gamepad</h3>
@@ -145,8 +153,8 @@
 <div id="ghost" class="hidden">×</div>
 <div id="status" class="hidden"></div>
 
-<script src="./format.js?v=9"></script>
-<script src="./game.js?v=9"></script>
-<script src="./app.js?v=9"></script>
+<script src="./format.js?v=10"></script>
+<script src="./game.js?v=10"></script>
+<script src="./app.js?v=10"></script>
 </body>
 </html>
